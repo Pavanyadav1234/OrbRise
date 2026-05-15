@@ -36,27 +36,16 @@ const handleVerify = async () => {
   setVerifying(true)
 
   try {
-    const { MiniKit, VerificationLevel } = await import('@worldcoin/minikit-js')
+    const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
 
-    // Install if not already
-    if (!MiniKit.isInstalled()) {
-      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-      // Wait a tick for install to complete
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
-
-    const { finalPayload } = await MiniKit.commandsAsync.verify({
+    const request = await IDKit.request({
+      app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
       action: 'orbrise-verify',
-      verification_level: VerificationLevel.Orb,
-    })
+      allow_legacy_proofs: true,
+      environment: 'production',
+    }).preset(orbLegacy())
 
-    console.log('finalPayload:', JSON.stringify(finalPayload))
-
-    if (finalPayload.status === 'error') {
-      setVerifyError('ERROR: ' + JSON.stringify(finalPayload))
-      setVerifying(false)
-      return
-    }
+    const finalPayload = await request.pollUntilCompletion()
 
     const res = await fetch('/api/verify', {
       method: 'POST',
