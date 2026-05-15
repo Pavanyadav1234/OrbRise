@@ -2,22 +2,36 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { action } = await req.json();
-    const { signRequest } = await import("@worldcoin/idkit-core/signing");
+    const body = await req.json();
+    console.log("Verify body received:", JSON.stringify(body));
 
-    const { sig, nonce, createdAt, expiresAt } = signRequest({
-      signingKeyHex: process.env.RP_SIGNING_KEY!,
-      action,
-    });
+    const rpId = process.env.NEXT_PUBLIC_RP_ID!;
 
-    return NextResponse.json({
-      sig,
-      nonce,
-      created_at: createdAt,
-      expires_at: expiresAt,
-    });
+    const response = await fetch(
+      `https://developer.world.org/api/v4/verify/${rpId}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+
+    const data = await response.json();
+    console.log("World verify response:", JSON.stringify(data));
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { success: false, detail: data },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("rp-signature error:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error("Verify route error:", err);
+    return NextResponse.json(
+      { success: false, error: String(err) },
+      { status: 500 }
+    );
   }
 }

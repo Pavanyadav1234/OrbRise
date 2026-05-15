@@ -79,9 +79,10 @@ const handleVerify = async () => {
     const data = await res.json()
 
     if (data.success) {
-      setVerified(true)
-    } else {
-      setVerifyError('Backend failed: ' + JSON.stringify(data))
+  setVerified(true)
+} else {
+  setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
+}
     }
   } catch (err) {
     setVerifyError('CATCH ERROR: ' + String(err))
