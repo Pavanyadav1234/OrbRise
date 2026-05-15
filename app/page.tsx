@@ -31,51 +31,53 @@ export default function OrbRise() {
     setAnswered(i)
   }
 
-  const handleVerify = async () => {
-    setVerifyError('')
-    setVerifying(true)
+const handleVerify = async () => {
+  setVerifyError('')
+  setVerifying(true)
 
-    try {
-      const { MiniKit, VerificationLevel } = await import('@worldcoin/minikit-js')
+  try {
+    const { MiniKit, VerificationLevel } = await import('@worldcoin/minikit-js')
 
-      if (!MiniKit.isInstalled()) {
-        setVerifyError('Please open this app inside World App.')
-        setVerifying(false)
-        return
-      }
-
-      const { finalPayload } = await MiniKit.commandsAsync.verify({
-        action: 'orbrise-verify',
-        verification_level: VerificationLevel.Orb,
-      })
-
-      if (finalPayload.status === 'error') {
-        setVerifyError('Verification failed. Try again.')
-        setVerifying(false)
-        return
-      }
-
-      const res = await fetch('/api/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalPayload),
-      })
-
-      const data = await res.json()
-
-      if (data.success) {
-        setVerified(true)
-        setShowModal(false)
-      } else {
-        setVerifyError('Backend verification failed. Try again.')
-      }
-    } catch (err) {
-      setVerifyError('Something went wrong. Try again.')
-      console.error(err)
-    } finally {
-      setVerifying(false)
+    // Install if not already
+    if (!MiniKit.isInstalled()) {
+      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+      // Wait a tick for install to complete
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
+
+    const { finalPayload } = await MiniKit.commandsAsync.verify({
+      action: 'orbrise-verify',
+      verification_level: VerificationLevel.Orb,
+    })
+
+    console.log('finalPayload:', JSON.stringify(finalPayload))
+
+    if (finalPayload.status === 'error') {
+      setVerifyError('ERROR: ' + JSON.stringify(finalPayload))
+      setVerifying(false)
+      return
+    }
+
+    const res = await fetch('/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(finalPayload),
+    })
+
+    const data = await res.json()
+
+    if (data.success) {
+      setVerified(true)
+    } else {
+      setVerifyError('Backend failed: ' + JSON.stringify(data))
+    }
+  } catch (err) {
+    setVerifyError('CATCH ERROR: ' + String(err))
+    console.error(err)
+  } finally {
+    setVerifying(false)
   }
+}
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
