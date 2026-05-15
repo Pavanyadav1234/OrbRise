@@ -3,14 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    console.log("Received body:", JSON.stringify(body));
 
     const rpId = process.env.NEXT_PUBLIC_RP_ID!;
 
-    // Add action to the body
     const verifyBody = {
-      ...body,
       action: 'orbrise-verify',
+      responses: [body],
     };
+
+    console.log("Sending to World:", JSON.stringify(verifyBody));
 
     const response = await fetch(
       `https://developer.world.org/api/v4/verify/${rpId}`,
@@ -22,6 +24,7 @@ export async function POST(req: NextRequest) {
     );
 
     const data = await response.json();
+    console.log("World response:", JSON.stringify(data));
 
     if (!response.ok) {
       return NextResponse.json(
