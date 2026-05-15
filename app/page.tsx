@@ -66,8 +66,6 @@ const handleVerify = async () => {
     }).preset(orbLegacy())
 
     const finalPayload = await request.pollUntilCompletion()
-setVerifyError('PAYLOAD: ' + JSON.stringify(finalPayload))
-return
 
     const res = await fetch('/api/verify', {
       method: 'POST',
