@@ -34,53 +34,114 @@ export default function OrbRise() {
   const handleVerify = async () => {
     setVerifyError('')
     setVerifying(true)
+
     try {
-      // Try real MiniKit if inside World App
-      const w = window as unknown as Record<string, unknown>
-      if (w.MiniKit) {
-        const mk = w.MiniKit as {
-          commandsAsync: {
-            verify: (p: object) => Promise<{ finalPayload: { status: string } }>
-          }
-        }
-        const { finalPayload } = await mk.commandsAsync.verify({
-          action: 'orbrise-verify',
-          verification_level: 'orb',
-        })
-        if (finalPayload.status === 'error') {
-          setVerifyError('Verification failed. Try again.')
-          setVerifying(false)
-          return
-        }
-        const res = await fetch('/api/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payload: finalPayload, action: 'orbrise-verify' }),
-        })
-        const data = await res.json()
-        if (data.success) {
-          setVerified(true)
-          setVerifying(false)
-          setTimeout(() => setShowModal(false), 1200)
-        } else {
-          setVerifyError('Verification failed: ' + (data.detail || 'Unknown'))
-          setVerifying(false)
-        }
-      } else {
-        // Simulator mode for browser testing
-        await new Promise(r => setTimeout(r, 2000))
-        setVerified(true)
+      const { MiniKit, VerificationLevel } = await import('@worldcoin/minikit-js')
+
+      if (!MiniKit.isInstalled()) {
+        setVerifyError('Please open this app inside World App.')
         setVerifying(false)
-        setTimeout(() => setShowModal(false), 1200)
+        return
       }
-    } catch {
+
+      const { finalPayload } = await MiniKit.commandsAsync.verify({
+        action: 'orbrise-verify',
+        verification_level: VerificationLevel.Orb,
+      })
+
+      if (finalPayload.status === 'error') {
+        setVerifyError('Verification failed. Try again.')
+        setVerifying(false)
+        return
+      }
+
+      const res = await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        setVerified(true)
+        setShowModal(false)
+      } else {
+        setVerifyError('Backend verification failed. Try again.')
+      }
+    } catch (err) {
       setVerifyError('Something went wrong. Try again.')
+      console.error(err)
+    } finally {
       setVerifying(false)
     }
   }
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
+  // ✅ GATE SCREEN — shown before app loads, until verified
+  if (!verified) {
+    return (
+      <div style={{
+        background: '#0a0a0f', minHeight: '100vh', color: '#f0eeff',
+        fontFamily: 'system-ui, sans-serif', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', padding: 24
+      }}>
+        <div style={{ width: '100%', maxWidth: 380, textAlign: 'center' }}>
+
+          {/* Logo */}
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%',
+            background: 'linear-gradient(135deg,rgba(124,92,252,0.3),rgba(0,212,255,0.2))',
+            border: '1.5px solid rgba(124,92,252,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 36, margin: '0 auto 24px'
+          }}>🌍</div>
+
+          <div style={{
+            fontSize: 32, fontWeight: 800, marginBottom: 8,
+            background: 'linear-gradient(135deg,#9d82ff,#00d4ff)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+          }}>OrbRise</div>
+
+          <div style={{ fontSize: 14, color: '#9291a5', lineHeight: 1.7, marginBottom: 40, padding: '0 8px' }}>
+            OrbRise uses World ID to ensure every player is a real human. Verify once to enter.
+          </div>
+
+          {verifyError && (
+            <div style={{
+              background: 'rgba(255,77,109,0.1)', border: '0.5px solid rgba(255,77,109,0.3)',
+              borderRadius: 12, padding: '12px 16px', marginBottom: 16,
+              fontSize: 13, color: '#ff4d6d'
+            }}>
+              {verifyError}
+            </div>
+          )}
+
+          <button
+            onClick={handleVerify}
+            disabled={verifying}
+            style={{
+              width: '100%', padding: 18,
+              background: verifying ? '#1a1a24' : '#fff',
+              border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none',
+              borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
+              fontWeight: 700, color: verifying ? '#9291a5' : '#000',
+              cursor: verifying ? 'default' : 'pointer', marginBottom: 16
+            }}
+          >
+            {verifying ? '🌐 Connecting to World ID...' : '🌐 Verify with World ID'}
+          </button>
+
+          <div style={{ fontSize: 11, color: '#6b6a7d' }}>
+            Powered by World ID · One-time verification
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ✅ MAIN APP — only shown after verified
   return (
     <div style={{ background: '#0a0a0f', minHeight: '100vh', color: '#f0eeff', fontFamily: 'system-ui, sans-serif', display: 'flex', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 420, position: 'relative', paddingBottom: 80 }}>
@@ -89,9 +150,9 @@ export default function OrbRise() {
           <div>
             <div style={{ padding: '48px 20px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontSize: 24, fontWeight: 800, background: 'linear-gradient(135deg,#9d82ff,#00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>OrbRise</div>
-              <div onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(124,92,252,0.12)', border: '0.5px solid rgba(124,92,252,0.3)', borderRadius: 20, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#9d82ff', cursor: 'pointer' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: verified ? '#06d6a0' : '#ffd166', display: 'inline-block' }} />
-                {verified ? 'World ID ✓' : 'Verify ID'}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(6,214,160,0.12)', border: '0.5px solid rgba(6,214,160,0.3)', borderRadius: 20, padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#06d6a0' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#06d6a0', display: 'inline-block' }} />
+                World ID ✓
               </div>
             </div>
 
@@ -269,10 +330,10 @@ export default function OrbRise() {
             <div style={{ margin: '0 20px 16px', background: '#111118', border: '0.5px solid rgba(255,255,255,0.13)', borderRadius: 14, padding: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#000', border: '1.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🌍</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>{verified ? 'World ID Verified' : 'Not Verified'}</div>
-                <div style={{ fontSize: 12, color: '#9291a5' }}>{verified ? 'Confirmed real human' : 'Tap to verify'}</div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>World ID Verified</div>
+                <div style={{ fontSize: 12, color: '#9291a5' }}>Confirmed real human</div>
               </div>
-              <div style={{ color: verified ? '#06d6a0' : '#ffd166', fontSize: 18 }}>{verified ? '✓' : '!'}</div>
+              <div style={{ color: '#06d6a0', fontSize: 18 }}>✓</div>
             </div>
             <div style={{ margin: '0 20px 16px', background: 'linear-gradient(135deg,rgba(124,92,252,0.2),rgba(0,212,255,0.1))', border: '0.5px solid rgba(124,92,252,0.35)', borderRadius: 14, padding: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ fontSize: 28 }}>👑</div>
@@ -298,31 +359,6 @@ export default function OrbRise() {
             </button>
           ))}
         </div>
-
-        {showModal && (
-          <div onClick={() => setShowModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: '#111118', borderRadius: '24px 24px 0 0', border: '0.5px solid rgba(255,255,255,0.13)', padding: '28px 24px 40px' }}>
-              <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.13)', borderRadius: 2, margin: '0 auto 24px' }} />
-              <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 12 }}>🌍</div>
-              <div style={{ fontSize: 22, fontWeight: 800, textAlign: 'center', marginBottom: 8 }}>
-                {verified ? '✓ Verified!' : verifying ? 'Verifying...' : 'Verify with World ID'}
-              </div>
-              <div style={{ fontSize: 14, color: '#9291a5', textAlign: 'center', lineHeight: 1.6, marginBottom: 24 }}>
-                {verified ? 'Your humanity is confirmed. Welcome to OrbRise!' : 'OrbRise uses World ID to ensure every player is a real human.'}
-              </div>
-              {verifyError && (
-                <div style={{ background: 'rgba(255,77,109,0.1)', border: '0.5px solid rgba(255,77,109,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#ff4d6d', textAlign: 'center' }}>{verifyError}</div>
-              )}
-              {!verified && (
-                <button onClick={handleVerify} disabled={verifying} style={{ width: '100%', padding: 16, background: verifying ? '#1a1a24' : '#fff', border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none', borderRadius: 14, fontFamily: 'system-ui', fontSize: 15, fontWeight: 700, color: verifying ? '#9291a5' : '#000', cursor: verifying ? 'default' : 'pointer' }}>
-                  {verifying ? '🌐 Connecting to World ID...' : '🌐 Verify with World ID'}
-                </button>
-              )}
-              {verified && <div style={{ textAlign: 'center', fontSize: 14, color: '#06d6a0', fontWeight: 700 }}>✓ Human Verified — You&apos;re all set!</div>}
-              <button onClick={() => setShowModal(false)} style={{ width: '100%', marginTop: 10, padding: 12, background: 'none', border: 'none', fontFamily: 'system-ui', fontSize: 13, color: '#6b6a7d', cursor: 'pointer' }}>Maybe later</button>
-            </div>
-          </div>
-        )}
 
       </div>
     </div>
