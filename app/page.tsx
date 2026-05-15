@@ -38,7 +38,6 @@ const handleVerify = async () => {
   try {
     const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
 
-    // Step 1: Get RP signature from backend
     const rpRes = await fetch('/api/rp-signature', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -47,12 +46,11 @@ const handleVerify = async () => {
     const rpSig = await rpRes.json()
 
     if (rpSig.error) {
-      setVerifyError('RP Signature error: ' + rpSig.error)
+      setVerifyError('RP error: ' + rpSig.error)
       setVerifying(false)
       return
     }
 
-    // Step 2: Request IDKit proof
     const request = await IDKit.request({
       app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
       action: 'orbrise-verify',
@@ -69,7 +67,6 @@ const handleVerify = async () => {
 
     const finalPayload = await request.pollUntilCompletion()
 
-    // Step 3: Verify on backend
     const res = await fetch('/api/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -79,10 +76,9 @@ const handleVerify = async () => {
     const data = await res.json()
 
     if (data.success) {
-  setVerified(true)
-} else {
-  setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
-}
+      setVerified(true)
+    } else {
+      setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
     }
   } catch (err) {
     setVerifyError('CATCH ERROR: ' + String(err))
