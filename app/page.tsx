@@ -8,18 +8,6 @@ const challenges = [
     options: ['216473', '284673', '246138', '816432'],
     correct: 1,
   },
-  {
-    type: 'Aptitude',
-    question: 'A train travels 60 km in 45 minutes. What is its speed in km/h?',
-    options: ['70', '80', '90', '75'],
-    correct: 1,
-  },
-  {
-    type: 'Memory',
-    question: 'Which planet is known as the Red Planet?',
-    options: ['Venus', 'Jupiter', 'Mars', 'Saturn'],
-    correct: 2,
-  },
 ]
 
 export default function OrbRise() {
@@ -34,7 +22,7 @@ export default function OrbRise() {
 
   useEffect(() => {
     if (screen !== 'home' || answered !== null || timer === 0) return
-    const t = setTimeout(() => setTimer(t => t - 1), 1000)
+    const t = setTimeout(() => setTimer(p => p - 1), 1000)
     return () => clearTimeout(t)
   }, [timer, screen, answered])
 
@@ -46,48 +34,47 @@ export default function OrbRise() {
   const handleVerify = async () => {
     setVerifyError('')
     setVerifying(true)
-
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const MiniKit = (await import('@worldcoin/minikit-js')).MiniKit
-
-      if (!MiniKit.isInstalled()) {
+      // Try real MiniKit if inside World App
+      const w = window as unknown as Record<string, unknown>
+      if (w.MiniKit) {
+        const mk = w.MiniKit as {
+          commandsAsync: {
+            verify: (p: object) => Promise<{ finalPayload: { status: string } }>
+          }
+        }
+        const { finalPayload } = await mk.commandsAsync.verify({
+          action: 'orbrise-verify',
+          verification_level: 'orb',
+        })
+        if (finalPayload.status === 'error') {
+          setVerifyError('Verification failed. Try again.')
+          setVerifying(false)
+          return
+        }
+        const res = await fetch('/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload: finalPayload, action: 'orbrise-verify' }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          setVerified(true)
+          setVerifying(false)
+          setTimeout(() => setShowModal(false), 1200)
+        } else {
+          setVerifyError('Verification failed: ' + (data.detail || 'Unknown'))
+          setVerifying(false)
+        }
+      } else {
+        // Simulator mode for browser testing
         await new Promise(r => setTimeout(r, 2000))
         setVerified(true)
         setVerifying(false)
         setTimeout(() => setShowModal(false), 1200)
-        return
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { finalPayload } = await (MiniKit.commandsAsync as any).verify({
-        action: 'orbrise-verify',
-        verification_level: 'orb',
-      })
-
-      if (finalPayload.status === 'error') {
-        setVerifyError('Verification cancelled or failed. Try again.')
-        setVerifying(false)
-        return
-      }
-
-      const res = await fetch('/api/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payload: finalPayload, action: 'orbrise-verify' }),
-      })
-
-      const data = await res.json()
-      if (data.success) {
-        setVerified(true)
-        setVerifying(false)
-        setTimeout(() => setShowModal(false), 1200)
-      } else {
-        setVerifyError('Verification failed: ' + (data.detail || 'Unknown error'))
-        setVerifying(false)
       }
     } catch {
-      setVerifyError('Something went wrong. Please try again.')
+      setVerifyError('Something went wrong. Try again.')
       setVerifying(false)
     }
   }
@@ -98,7 +85,6 @@ export default function OrbRise() {
     <div style={{ background: '#0a0a0f', minHeight: '100vh', color: '#f0eeff', fontFamily: 'system-ui, sans-serif', display: 'flex', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 420, position: 'relative', paddingBottom: 80 }}>
 
-        {/* HOME */}
         {screen === 'home' && (
           <div>
             <div style={{ padding: '48px 20px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -145,9 +131,9 @@ export default function OrbRise() {
             </div>
 
             <div style={{ margin: '0 20px', background: '#111118', border: '0.5px solid rgba(255,255,255,0.13)', borderRadius: 18, padding: 20, position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#7c5cfc,#00d4ff)', borderRadius: '18px 18px 0 0' }} />
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#7c5cfc,#00d4ff)' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(79,163,255,0.15)', color: '#4fa3ff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{challenge.type}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(79,163,255,0.15)', color: '#4fa3ff', textTransform: 'uppercase' }}>{challenge.type}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9291a5', fontFamily: 'monospace' }}>0:{String(timer).padStart(2, '0')}</span>
               </div>
               <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.6, marginBottom: 16 }}>{challenge.question}</div>
@@ -161,7 +147,7 @@ export default function OrbRise() {
                     color: answered === null ? '#f0eeff' : i === challenge.correct ? '#06d6a0' : answered === i ? '#ff4d6d' : '#6b6a7d',
                     fontFamily: 'system-ui', fontSize: 14, fontWeight: 500, textAlign: 'left',
                     cursor: answered === null ? 'pointer' : 'default',
-                    display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.2s'
+                    display: 'flex', alignItems: 'center', gap: 10
                   }}>
                     <span style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
                       {['A','B','C','D'][i]}
@@ -183,7 +169,6 @@ export default function OrbRise() {
           </div>
         )}
 
-        {/* STREAK */}
         {screen === 'streak' && (
           <div>
             <div style={{ padding: '48px 20px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -222,15 +207,10 @@ export default function OrbRise() {
           </div>
         )}
 
-        {/* LEADERBOARD */}
         {screen === 'lb' && (
           <div>
             <div style={{ padding: '48px 20px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 800, background: 'linear-gradient(135deg,#9d82ff,#00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Rankings</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, background: 'rgba(124,92,252,0.2)', color: '#9d82ff', fontWeight: 700 }}>Global</span>
-                <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, background: '#1a1a24', color: '#9291a5', fontWeight: 600 }}>Weekly</span>
-              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 8, padding: '0 20px 24px' }}>
               {[
@@ -239,7 +219,7 @@ export default function OrbRise() {
                 { emoji: '🐉', name: 'ryu_dev', xp: '4,450', h: 26, rank: 3 },
               ].map((p, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: i === 1 ? 54 : 44, height: i === 1 ? 54 : 44, borderRadius: '50%', background: i === 1 ? 'rgba(255,209,102,0.1)' : '#1a1a24', border: i === 1 ? '1.5px solid rgba(255,209,102,0.4)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: i === 1 ? 24 : 18, boxShadow: i === 1 ? '0 0 20px rgba(255,209,102,0.3)' : 'none' }}>{p.emoji}</div>
+                  <div style={{ width: i === 1 ? 54 : 44, height: i === 1 ? 54 : 44, borderRadius: '50%', background: i === 1 ? 'rgba(255,209,102,0.1)' : '#1a1a24', border: i === 1 ? '1.5px solid rgba(255,209,102,0.4)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: i === 1 ? 24 : 18 }}>{p.emoji}</div>
                   <div style={{ fontSize: 11, fontWeight: i === 1 ? 700 : 600, color: i === 1 ? '#f0eeff' : '#9291a5' }}>{p.name}</div>
                   <div style={{ fontSize: 10, color: i === 1 ? '#ffd166' : '#6b6a7d', fontFamily: 'monospace' }}>{p.xp} xp</div>
                   <div style={{ width: 72, height: p.h, borderRadius: '8px 8px 0 0', background: i === 1 ? 'rgba(255,209,102,0.15)' : 'rgba(255,255,255,0.05)', border: `0.5px solid ${i === 1 ? 'rgba(255,209,102,0.3)' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: i === 1 ? '#ffd166' : 'rgba(255,255,255,0.3)', fontSize: 15 }}>{p.rank}</div>
@@ -265,10 +245,9 @@ export default function OrbRise() {
           </div>
         )}
 
-        {/* PROFILE */}
         {screen === 'profile' && (
           <div>
-            <div style={{ padding: '48px 20px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '48px 20px 16px' }}>
               <div style={{ fontSize: 22, fontWeight: 800, background: 'linear-gradient(135deg,#9d82ff,#00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Profile</div>
             </div>
             <div style={{ padding: '0 20px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -290,8 +269,8 @@ export default function OrbRise() {
             <div style={{ margin: '0 20px 16px', background: '#111118', border: '0.5px solid rgba(255,255,255,0.13)', borderRadius: 14, padding: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#000', border: '1.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🌍</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>{verified ? 'World ID Verified' : 'World ID Not Verified'}</div>
-                <div style={{ fontSize: 12, color: '#9291a5' }}>{verified ? 'Confirmed real human · No bots' : 'Tap to verify your identity'}</div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{verified ? 'World ID Verified' : 'Not Verified'}</div>
+                <div style={{ fontSize: 12, color: '#9291a5' }}>{verified ? 'Confirmed real human' : 'Tap to verify'}</div>
               </div>
               <div style={{ color: verified ? '#06d6a0' : '#ffd166', fontSize: 18 }}>{verified ? '✓' : '!'}</div>
             </div>
@@ -306,7 +285,6 @@ export default function OrbRise() {
           </div>
         )}
 
-        {/* BOTTOM NAV */}
         <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 420, background: 'rgba(10,10,15,0.95)', borderTop: '0.5px solid rgba(255,255,255,0.13)', display: 'flex', zIndex: 100, padding: '8px 0 16px' }}>
           {[
             { id: 'home', label: 'Home', icon: '⌂' },
@@ -321,7 +299,6 @@ export default function OrbRise() {
           ))}
         </div>
 
-        {/* WORLD ID MODAL */}
         {showModal && (
           <div onClick={() => setShowModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: '#111118', borderRadius: '24px 24px 0 0', border: '0.5px solid rgba(255,255,255,0.13)', padding: '28px 24px 40px' }}>
@@ -331,24 +308,18 @@ export default function OrbRise() {
                 {verified ? '✓ Verified!' : verifying ? 'Verifying...' : 'Verify with World ID'}
               </div>
               <div style={{ fontSize: 14, color: '#9291a5', textAlign: 'center', lineHeight: 1.6, marginBottom: 24 }}>
-                {verified ? 'Your humanity is confirmed. Welcome to OrbRise!' : 'OrbRise uses World ID to ensure every player is a real human — no bots, no fake accounts.'}
+                {verified ? 'Your humanity is confirmed. Welcome to OrbRise!' : 'OrbRise uses World ID to ensure every player is a real human.'}
               </div>
               {verifyError && (
-                <div style={{ background: 'rgba(255,77,109,0.1)', border: '0.5px solid rgba(255,77,109,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#ff4d6d', textAlign: 'center' }}>
-                  {verifyError}
-                </div>
+                <div style={{ background: 'rgba(255,77,109,0.1)', border: '0.5px solid rgba(255,77,109,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#ff4d6d', textAlign: 'center' }}>{verifyError}</div>
               )}
               {!verified && (
                 <button onClick={handleVerify} disabled={verifying} style={{ width: '100%', padding: 16, background: verifying ? '#1a1a24' : '#fff', border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none', borderRadius: 14, fontFamily: 'system-ui', fontSize: 15, fontWeight: 700, color: verifying ? '#9291a5' : '#000', cursor: verifying ? 'default' : 'pointer' }}>
                   {verifying ? '🌐 Connecting to World ID...' : '🌐 Verify with World ID'}
                 </button>
               )}
-              {verified && (
-                <div style={{ textAlign: 'center', fontSize: 14, color: '#06d6a0', fontWeight: 700 }}>✓ Human Verified — You&apos;re all set!</div>
-              )}
-              <button onClick={() => setShowModal(false)} style={{ width: '100%', marginTop: 10, padding: 12, background: 'none', border: 'none', fontFamily: 'system-ui', fontSize: 13, color: '#6b6a7d', cursor: 'pointer' }}>
-                Maybe later
-              </button>
+              {verified && <div style={{ textAlign: 'center', fontSize: 14, color: '#06d6a0', fontWeight: 700 }}>✓ Human Verified — You&apos;re all set!</div>}
+              <button onClick={() => setShowModal(false)} style={{ width: '100%', marginTop: 10, padding: 12, background: 'none', border: 'none', fontFamily: 'system-ui', fontSize: 13, color: '#6b6a7d', cursor: 'pointer' }}>Maybe later</button>
             </div>
           </div>
         )}
