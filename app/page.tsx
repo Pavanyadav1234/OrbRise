@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { MiniKit } from '@worldcoin/minikit-js'
 
 const challenges = [
   {
@@ -46,31 +45,38 @@ export default function OrbRise() {
 
   const handleVerify = async () => {
     setVerifyError('')
-    if (!MiniKit.isInstalled()) {
-      setVerifying(true)
-      setTimeout(() => {
+    setVerifying(true)
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const MiniKit = (await import('@worldcoin/minikit-js')).MiniKit
+
+      if (!MiniKit.isInstalled()) {
+        await new Promise(r => setTimeout(r, 2000))
         setVerified(true)
         setVerifying(false)
         setTimeout(() => setShowModal(false), 1200)
-      }, 2000)
-      return
-    }
-    try {
-      setVerifying(true)
-      const { finalPayload } = await MiniKit.commandsAsync.verify({
+        return
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { finalPayload } = await (MiniKit.commandsAsync as any).verify({
         action: 'orbrise-verify',
         verification_level: 'orb',
       })
+
       if (finalPayload.status === 'error') {
         setVerifyError('Verification cancelled or failed. Try again.')
         setVerifying(false)
         return
       }
+
       const res = await fetch('/api/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payload: finalPayload, action: 'orbrise-verify' }),
       })
+
       const data = await res.json()
       if (data.success) {
         setVerified(true)
