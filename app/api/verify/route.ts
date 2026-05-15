@@ -9,7 +9,10 @@ export async function POST(req: NextRequest) {
 
     const verifyBody = {
       action: 'orbrise-verify',
-      responses: [body],
+      responses: [{
+        ...body,
+        protocol_version: "orb_v2", // legacy proof version
+      }],
     };
 
     console.log("Sending to World:", JSON.stringify(verifyBody));
