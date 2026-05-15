@@ -32,37 +32,17 @@ export default function OrbRise() {
   }
 
   const handleVerify = async () => {
-  setVerifyError('')
-  setVerifying(true)
+    setVerifyError('')
+    setVerifying(true)
 
-  try {
-    const { MiniKit, VerificationLevel } = await import('@worldcoin/minikit-js')
+    try {
+      const { MiniKit, VerificationLevel } = await import('@worldcoin/minikit-js')
 
-    // Check 1: Is MiniKit installed?
-    console.log('MiniKit installed:', MiniKit.isInstalled())
-
-    if (!MiniKit.isInstalled()) {
-      setVerifyError('MiniKit not installed — open inside World App')
-      setVerifying(false)
-      return
-    }
-
-    const result = await MiniKit.commandsAsync.verify({
-      action: 'orbrise-verify',
-      verification_level: VerificationLevel.Orb,
-    })
-
-    // Check 2: What does the payload look like?
-    console.log('finalPayload:', JSON.stringify(result.finalPayload))
-    setVerifyError('DEBUG: ' + JSON.stringify(result.finalPayload))
-
-  } catch (err) {
-    console.error('verify error:', err)
-    setVerifyError('ERROR: ' + String(err))
-  } finally {
-    setVerifying(false)
-  }
-}
+      if (!MiniKit.isInstalled()) {
+        setVerifyError('Please open this app inside World App.')
+        setVerifying(false)
+        return
+      }
 
       const { finalPayload } = await MiniKit.commandsAsync.verify({
         action: 'orbrise-verify',
