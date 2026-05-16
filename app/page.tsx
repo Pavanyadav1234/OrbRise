@@ -14,7 +14,6 @@ export default function OrbRise() {
   const [screen, setScreen] = useState('home')
   const [answered, setAnswered] = useState<number | null>(null)
   const [timer, setTimer] = useState(30)
-  const [showModal, setShowModal] = useState(false)
   const [verified, setVerified] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState('')
@@ -31,66 +30,66 @@ export default function OrbRise() {
     setAnswered(i)
   }
 
-const handleVerify = async () => {
-  setVerifyError('')
-  setVerifying(true)
+  const handleVerify = async () => {
+    setVerifyError('')
+    setVerifying(true)
 
-  try {
-    const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
+    try {
+      const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
 
-    const rpRes = await fetch('/api/rp-signature', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'orbrise-verify' }),
-    })
-    const rpSig = await rpRes.json()
+      const rpRes = await fetch('/api/rp-signature', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'orbrise-verify' }),
+      })
+      const rpSig = await rpRes.json()
 
-    if (rpSig.error) {
-      setVerifyError('RP error: ' + rpSig.error)
+      if (rpSig.error) {
+        setVerifyError('RP error: ' + rpSig.error)
+        setVerifying(false)
+        return
+      }
+
+      const request = await IDKit.request({
+        app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
+        action: 'orbrise-verify',
+        rp_context: {
+          rp_id: process.env.NEXT_PUBLIC_RP_ID as `rp_${string}`,
+          nonce: rpSig.nonce,
+          created_at: rpSig.created_at,
+          expires_at: rpSig.expires_at,
+          signature: rpSig.sig,
+        },
+        allow_legacy_proofs: true,
+        environment: 'production',
+      }).preset(orbLegacy())
+
+      const finalPayload = await request.pollUntilCompletion()
+
+      const res = await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        setVerified(true)
+      } else {
+        setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
+      }
+    } catch (err) {
+      setVerifyError('CATCH ERROR: ' + String(err))
+      console.error(err)
+    } finally {
       setVerifying(false)
-      return
     }
-
-    const request = await IDKit.request({
-      app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
-      action: 'orbrise-verify',
-      rp_context: {
-        rp_id: process.env.NEXT_PUBLIC_RP_ID as `rp_${string}`,
-        nonce: rpSig.nonce,
-        created_at: rpSig.created_at,
-        expires_at: rpSig.expires_at,
-        signature: rpSig.sig,
-      },
-      allow_legacy_proofs: true,
-      environment: 'production',
-    }).preset(orbLegacy())
-
-    const finalPayload = await request.pollUntilCompletion()
-
-    const res = await fetch('/api/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(finalPayload),
-    })
-
-    const data = await res.json()
-
-    if (data.success) {
-      setVerified(true)
-    } else {
-      setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
-    }
-  } catch (err) {
-    setVerifyError('CATCH ERROR: ' + String(err))
-    console.error(err)
-  } finally {
-    setVerifying(false)
   }
-}
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
-  // ✅ GATE SCREEN — shown before app loads, until verified
+  // GATE SCREEN
   if (!verified) {
     return (
       <div style={{
@@ -99,8 +98,6 @@ const handleVerify = async () => {
         alignItems: 'center', justifyContent: 'center', padding: 24
       }}>
         <div style={{ width: '100%', maxWidth: 380, textAlign: 'center' }}>
-
-          {/* Logo */}
           <div style={{
             width: 80, height: 80, borderRadius: '50%',
             background: 'linear-gradient(135deg,rgba(124,92,252,0.3),rgba(0,212,255,0.2))',
@@ -129,18 +126,14 @@ const handleVerify = async () => {
             </div>
           )}
 
-          <button
-            onClick={handleVerify}
-            disabled={verifying}
-            style={{
-              width: '100%', padding: 18,
-              background: verifying ? '#1a1a24' : '#fff',
-              border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none',
-              borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
-              fontWeight: 700, color: verifying ? '#9291a5' : '#000',
-              cursor: verifying ? 'default' : 'pointer', marginBottom: 16
-            }}
-          >
+          <button onClick={handleVerify} disabled={verifying} style={{
+            width: '100%', padding: 18,
+            background: verifying ? '#1a1a24' : '#fff',
+            border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none',
+            borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
+            fontWeight: 700, color: verifying ? '#9291a5' : '#000',
+            cursor: verifying ? 'default' : 'pointer', marginBottom: 16
+          }}>
             {verifying ? '🌐 Connecting to World ID...' : '🌐 Verify with World ID'}
           </button>
 
@@ -152,7 +145,7 @@ const handleVerify = async () => {
     )
   }
 
-  // ✅ MAIN APP — only shown after verified
+  // MAIN APP
   return (
     <div style={{ background: '#0a0a0f', minHeight: '100vh', color: '#f0eeff', fontFamily: 'system-ui, sans-serif', display: 'flex', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 420, position: 'relative', paddingBottom: 80 }}>
@@ -177,10 +170,10 @@ const handleVerify = async () => {
                     </linearGradient>
                   </defs>
                   <circle cx="90" cy="90" r="80" fill="none" stroke="#1a1a24" strokeWidth="10" />
-                  <circle cx="90" cy="90" r="80" fill="none" stroke="url(#g1)" strokeWidth="10" strokeLinecap="round" strokeDasharray="502" strokeDashoffset="150" />
+                  <circle cx="90" cy="90" r="80" fill="none" stroke="url(#g1)" strokeWidth="10" strokeLinecap="round" strokeDasharray="502" strokeDashoffset="488" />
                 </svg>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ fontSize: 44, fontWeight: 800, background: 'linear-gradient(135deg,#9d82ff,#00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>23</div>
+                  <div style={{ fontSize: 44, fontWeight: 800, background: 'linear-gradient(135deg,#9d82ff,#00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>1</div>
                   <div style={{ fontSize: 11, color: '#9291a5', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Day Streak</div>
                 </div>
               </div>
@@ -188,11 +181,11 @@ const handleVerify = async () => {
 
             <div style={{ margin: '0 20px', background: '#111118', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <div style={{ color: '#ffd166', fontWeight: 700, fontSize: 13 }}>⚡ Elite</div>
-                <div style={{ color: '#9291a5', fontSize: 12, fontFamily: 'monospace' }}>3,420 / 5,000 XP</div>
+                <div style={{ color: '#ffd166', fontWeight: 700, fontSize: 13 }}>🌱 Newcomer</div>
+                <div style={{ color: '#9291a5', fontSize: 12, fontFamily: 'monospace' }}>0 / 5,000 XP</div>
               </div>
               <div style={{ height: 6, background: '#1a1a24', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: '68%', background: 'linear-gradient(90deg,#7c5cfc,#00d4ff)', borderRadius: 3 }} />
+                <div style={{ height: '100%', width: '1%', background: 'linear-gradient(90deg,#7c5cfc,#00d4ff)', borderRadius: 3 }} />
               </div>
             </div>
 
@@ -235,7 +228,7 @@ const handleVerify = async () => {
                 background: answered === challenge.correct ? 'rgba(6,214,160,0.12)' : 'rgba(255,77,109,0.1)',
                 border: `0.5px solid ${answered === challenge.correct ? 'rgba(6,214,160,0.3)' : 'rgba(255,77,109,0.2)'}`,
                 color: answered === challenge.correct ? '#06d6a0' : '#ff4d6d' }}>
-                {answered === challenge.correct ? '✓ Correct! +50 XP earned · Streak extended to 24 days' : '✗ Wrong answer · Keep your streak tomorrow!'}
+                {answered === challenge.correct ? '✓ Correct! +50 XP earned · Streak extended to 2 days!' : '✗ Wrong answer · Keep your streak tomorrow!'}
               </div>
             )}
           </div>
@@ -253,27 +246,27 @@ const handleVerify = async () => {
               {streakDays.map(d => (
                 <div key={d} style={{
                   aspectRatio: '1', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700,
-                  background: d < 23 ? 'rgba(124,92,252,0.3)' : d === 23 ? 'linear-gradient(135deg,#7c5cfc,#00d4ff)' : 'rgba(255,255,255,0.03)',
-                  border: d < 23 ? '0.5px solid rgba(124,92,252,0.5)' : d === 23 ? 'none' : '0.5px solid rgba(255,255,255,0.07)',
-                  color: d < 23 ? '#9d82ff' : d === 23 ? '#fff' : '#6b6a7d',
-                  boxShadow: d === 23 ? '0 0 12px rgba(124,92,252,0.5)' : 'none'
-                }}>{d === 23 ? '★' : d}</div>
+                  background: d === 1 ? 'linear-gradient(135deg,#7c5cfc,#00d4ff)' : 'rgba(255,255,255,0.03)',
+                  border: d === 1 ? 'none' : '0.5px solid rgba(255,255,255,0.07)',
+                  color: d === 1 ? '#fff' : '#6b6a7d',
+                  boxShadow: d === 1 ? '0 0 12px rgba(124,92,252,0.5)' : 'none'
+                }}>{d === 1 ? '★' : d}</div>
               ))}
             </div>
             <div style={{ padding: '0 20px 10px', fontSize: 13, fontWeight: 600, color: '#9291a5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Milestones</div>
             {[
-              { icon: '🔥', name: '7-Day Streak', desc: 'Rookie milestone', done: true },
-              { icon: '⚡', name: '21-Day Streak', desc: 'Elite threshold', done: true },
-              { icon: '💎', name: '30-Day Streak', desc: '7 days to go', done: false },
-              { icon: '👑', name: '100-Day Streak', desc: 'OrbMaster — 77 days to go', done: false },
+              { icon: '🔥', name: '7-Day Streak', desc: '6 days to go', done: false },
+              { icon: '⚡', name: '21-Day Streak', desc: 'Elite threshold', done: false },
+              { icon: '💎', name: '30-Day Streak', desc: '29 days to go', done: false },
+              { icon: '👑', name: '100-Day Streak', desc: 'OrbMaster — 99 days to go', done: false },
             ].map((m, i) => (
-              <div key={i} style={{ margin: '0 20px 10px', background: '#111118', border: `0.5px solid ${m.done ? 'rgba(124,92,252,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, opacity: m.done ? 1 : 0.5 }}>
+              <div key={i} style={{ margin: '0 20px 10px', background: '#111118', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, opacity: 0.5 }}>
                 <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(124,92,252,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{m.icon}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{m.name}</div>
                   <div style={{ fontSize: 12, color: '#9291a5' }}>{m.desc}</div>
                 </div>
-                <div style={{ color: m.done ? '#06d6a0' : '#6b6a7d', fontSize: 16 }}>{m.done ? '✓' : '→'}</div>
+                <div style={{ color: '#6b6a7d', fontSize: 16 }}>→</div>
               </div>
             ))}
           </div>
@@ -301,8 +294,7 @@ const handleVerify = async () => {
             {[
               { rank: 4, emoji: '🦋', name: 'nova_21', meta: '38-day streak · Elite', xp: '4,180', me: false },
               { rank: 5, emoji: '🌙', name: 'moonbit', meta: '31-day streak · Elite', xp: '3,970', me: false },
-              { rank: 12, emoji: '⭐', name: 'You', meta: '23-day streak · Elite', xp: '3,420', me: true },
-              { rank: 13, emoji: '🎯', name: 'target99', meta: '20-day streak · Challenger', xp: '3,380', me: false },
+              { rank: 99, emoji: '⭐', name: 'You', meta: '1-day streak · Newcomer', xp: '0', me: true },
             ].map((r, i) => (
               <div key={i} style={{ margin: '0 20px 8px', background: r.me ? 'rgba(124,92,252,0.07)' : '#111118', border: `0.5px solid ${r.me ? 'rgba(124,92,252,0.35)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: r.me ? '#9d82ff' : '#6b6a7d', width: 22, textAlign: 'center', fontFamily: 'monospace' }}>{r.rank}</div>
@@ -327,11 +319,11 @@ const handleVerify = async () => {
               <div>
                 <div style={{ fontSize: 20, fontWeight: 800 }}>Pavan S N</div>
                 <div style={{ fontSize: 12, color: '#9291a5', fontFamily: 'monospace' }}>@orbuser_7492</div>
-                <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(255,209,102,0.1)', border: '0.5px solid rgba(255,209,102,0.3)', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700, color: '#ffd166' }}>⚡ Elite · Rank #12</div>
+                <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(255,209,102,0.1)', border: '0.5px solid rgba(255,209,102,0.3)', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700, color: '#ffd166' }}>🌱 Newcomer · Rank #99</div>
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, margin: '0 20px 16px' }}>
-              {[{ val: '23', lbl: 'Streak', color: '#9d82ff' }, { val: '3,420', lbl: 'XP', color: '#ffd166' }, { val: '89%', lbl: 'Accuracy', color: '#00d4ff' }].map((s, i) => (
+              {[{ val: '1', lbl: 'Streak', color: '#9d82ff' }, { val: '0', lbl: 'XP', color: '#ffd166' }, { val: '0%', lbl: 'Accuracy', color: '#00d4ff' }].map((s, i) => (
                 <div key={i} style={{ background: '#111118', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: 12, textAlign: 'center' }}>
                   <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.val}</div>
                   <div style={{ fontSize: 10, color: '#9291a5', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>{s.lbl}</div>
