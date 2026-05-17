@@ -83,28 +83,31 @@ export default function OrbRise() {
   // Step 1: Wallet Auth via MiniKit
 let walletAddress = null
 try {
-  const { MiniKit } = await import('@worldcoin/minikit-js')
+  const { MiniKit, ResponseEvent } = await import('@worldcoin/minikit-js')
+  
   MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
   await new Promise(resolve => setTimeout(resolve, 300))
 
-  const nonce = Math.random().toString(36).slice(2)
-  const { finalPayload: walletPayload } = await MiniKit.walletAuth({
-    nonce,
-    statement: 'Sign in to OrbRise',
-    expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+  walletAddress = await new Promise((resolve) => {
+    MiniKit.subscribe(ResponseEvent.MiniAppWalletAuth, (payload: any) => {
+      MiniKit.unsubscribe(ResponseEvent.MiniAppWalletAuth)
+      if (payload.status === 'success') {
+        resolve(MiniKit.walletAddress || payload.address)
+      } else {
+        resolve(null)
+      }
+    })
+
+    const nonce = Math.random().toString(36).replace(/[^a-z0-9]/g, '').slice(0, 8)
+    MiniKit.commands.walletAuth({
+      nonce,
+      statement: 'Sign in to OrbRise',
+      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    })
   })
-
-  console.log('walletPayload:', JSON.stringify(walletPayload))
-
-  if (walletPayload.status === 'success') {
-    walletAddress = walletPayload.address
-  } else {
-    setVerifyError('Wallet error: ' + JSON.stringify(walletPayload))
-  }
 } catch (e) {
-  setVerifyError('Wallet error: ' + String(e))
+  console.log('Wallet auth error:', String(e))
 }
-
   // Step 2: Save user to Supabase with wallet
   const userRes = await fetch('/api/user', {
     method: 'POST',
