@@ -85,14 +85,14 @@ export default function OrbRise() {
     const { MiniKit } = await import('@worldcoin/minikit-js')
     if (MiniKit.isInstalled()) {
       const nonce = Math.random().toString(36).slice(2)
-      const { finalPayload: walletPayload } = await MiniKit.commandsAsync.walletAuth({
-        nonce,
-        statement: 'Sign in to OrbRise',
-        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      })
-      if (walletPayload.status === 'success') {
-        walletAddress = walletPayload.address
-      }
+      const { finalPayload: walletPayload } = await MiniKit.walletAuth({
+  nonce,
+  statement: 'Sign in to OrbRise',
+  expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+})
+if (walletPayload.status === 'success') {
+  walletAddress = walletPayload.address
+}
     }
   } catch (e) {
     console.log('Wallet auth skipped:', e)
