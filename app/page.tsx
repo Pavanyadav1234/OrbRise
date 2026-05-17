@@ -17,6 +17,8 @@ export default function OrbRise() {
   const [verified, setVerified] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState('')
+  const [streak, setStreak] = useState(1)
+  const [xp, setXp] = useState(0)
   const challenge = challenges[0]
 
   useEffect(() => {
@@ -75,6 +77,20 @@ export default function OrbRise() {
       const data = await res.json()
 
       if (data.success) {
+        const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
+
+        const userRes = await fetch('/api/user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ world_id: nullifier }),
+        })
+        const userData = await userRes.json()
+
+        if (userData.user) {
+          setStreak(userData.user.streak)
+          setXp(userData.user.xp)
+        }
+
         setVerified(true)
       } else {
         setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
@@ -170,10 +186,10 @@ export default function OrbRise() {
                     </linearGradient>
                   </defs>
                   <circle cx="90" cy="90" r="80" fill="none" stroke="#1a1a24" strokeWidth="10" />
-                  <circle cx="90" cy="90" r="80" fill="none" stroke="url(#g1)" strokeWidth="10" strokeLinecap="round" strokeDasharray="502" strokeDashoffset="488" />
+                  <circle cx="90" cy="90" r="80" fill="none" stroke="url(#g1)" strokeWidth="10" strokeLinecap="round" strokeDasharray="502" strokeDashoffset={502 - Math.min((streak / 100) * 502, 502)} />
                 </svg>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ fontSize: 44, fontWeight: 800, background: 'linear-gradient(135deg,#9d82ff,#00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>1</div>
+                  <div style={{ fontSize: 44, fontWeight: 800, background: 'linear-gradient(135deg,#9d82ff,#00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{streak}</div>
                   <div style={{ fontSize: 11, color: '#9291a5', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Day Streak</div>
                 </div>
               </div>
@@ -181,11 +197,13 @@ export default function OrbRise() {
 
             <div style={{ margin: '0 20px', background: '#111118', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <div style={{ color: '#ffd166', fontWeight: 700, fontSize: 13 }}>🌱 Newcomer</div>
-                <div style={{ color: '#9291a5', fontSize: 12, fontFamily: 'monospace' }}>0 / 5,000 XP</div>
+                <div style={{ color: '#ffd166', fontWeight: 700, fontSize: 13 }}>
+                  {xp >= 5000 ? '👑 OrbMaster' : xp >= 3000 ? '⚡ Elite' : xp >= 1000 ? '🔥 Challenger' : '🌱 Newcomer'}
+                </div>
+                <div style={{ color: '#9291a5', fontSize: 12, fontFamily: 'monospace' }}>{xp} / 5,000 XP</div>
               </div>
               <div style={{ height: 6, background: '#1a1a24', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: '1%', background: 'linear-gradient(90deg,#7c5cfc,#00d4ff)', borderRadius: 3 }} />
+                <div style={{ height: '100%', width: `${Math.min((xp / 5000) * 100, 100)}%`, background: 'linear-gradient(90deg,#7c5cfc,#00d4ff)', borderRadius: 3, transition: 'width 0.5s ease' }} />
               </div>
             </div>
 
@@ -228,7 +246,7 @@ export default function OrbRise() {
                 background: answered === challenge.correct ? 'rgba(6,214,160,0.12)' : 'rgba(255,77,109,0.1)',
                 border: `0.5px solid ${answered === challenge.correct ? 'rgba(6,214,160,0.3)' : 'rgba(255,77,109,0.2)'}`,
                 color: answered === challenge.correct ? '#06d6a0' : '#ff4d6d' }}>
-                {answered === challenge.correct ? '✓ Correct! +50 XP earned · Streak extended to 2 days!' : '✗ Wrong answer · Keep your streak tomorrow!'}
+                {answered === challenge.correct ? `✓ Correct! +50 XP earned · Streak: ${streak} days!` : '✗ Wrong answer · Keep your streak tomorrow!'}
               </div>
             )}
           </div>
@@ -246,27 +264,27 @@ export default function OrbRise() {
               {streakDays.map(d => (
                 <div key={d} style={{
                   aspectRatio: '1', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700,
-                  background: d === 1 ? 'linear-gradient(135deg,#7c5cfc,#00d4ff)' : 'rgba(255,255,255,0.03)',
-                  border: d === 1 ? 'none' : '0.5px solid rgba(255,255,255,0.07)',
-                  color: d === 1 ? '#fff' : '#6b6a7d',
-                  boxShadow: d === 1 ? '0 0 12px rgba(124,92,252,0.5)' : 'none'
-                }}>{d === 1 ? '★' : d}</div>
+                  background: d <= streak ? 'linear-gradient(135deg,#7c5cfc,#00d4ff)' : 'rgba(255,255,255,0.03)',
+                  border: d <= streak ? 'none' : '0.5px solid rgba(255,255,255,0.07)',
+                  color: d <= streak ? '#fff' : '#6b6a7d',
+                  boxShadow: d === streak ? '0 0 12px rgba(124,92,252,0.5)' : 'none'
+                }}>{d === streak ? '★' : d}</div>
               ))}
             </div>
             <div style={{ padding: '0 20px 10px', fontSize: 13, fontWeight: 600, color: '#9291a5', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Milestones</div>
             {[
-              { icon: '🔥', name: '7-Day Streak', desc: '6 days to go', done: false },
-              { icon: '⚡', name: '21-Day Streak', desc: 'Elite threshold', done: false },
-              { icon: '💎', name: '30-Day Streak', desc: '29 days to go', done: false },
-              { icon: '👑', name: '100-Day Streak', desc: 'OrbMaster — 99 days to go', done: false },
+              { icon: '🔥', name: '7-Day Streak', desc: streak >= 7 ? 'Achieved!' : `${7 - streak} days to go`, done: streak >= 7 },
+              { icon: '⚡', name: '21-Day Streak', desc: streak >= 21 ? 'Achieved!' : `${21 - streak} days to go`, done: streak >= 21 },
+              { icon: '💎', name: '30-Day Streak', desc: streak >= 30 ? 'Achieved!' : `${30 - streak} days to go`, done: streak >= 30 },
+              { icon: '👑', name: '100-Day Streak', desc: streak >= 100 ? 'OrbMaster!' : `${100 - streak} days to go`, done: streak >= 100 },
             ].map((m, i) => (
-              <div key={i} style={{ margin: '0 20px 10px', background: '#111118', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, opacity: 0.5 }}>
+              <div key={i} style={{ margin: '0 20px 10px', background: '#111118', border: `0.5px solid ${m.done ? 'rgba(124,92,252,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, opacity: m.done ? 1 : 0.5 }}>
                 <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(124,92,252,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{m.icon}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{m.name}</div>
                   <div style={{ fontSize: 12, color: '#9291a5' }}>{m.desc}</div>
                 </div>
-                <div style={{ color: '#6b6a7d', fontSize: 16 }}>→</div>
+                <div style={{ color: m.done ? '#06d6a0' : '#6b6a7d', fontSize: 16 }}>{m.done ? '✓' : '→'}</div>
               </div>
             ))}
           </div>
@@ -294,7 +312,7 @@ export default function OrbRise() {
             {[
               { rank: 4, emoji: '🦋', name: 'nova_21', meta: '38-day streak · Elite', xp: '4,180', me: false },
               { rank: 5, emoji: '🌙', name: 'moonbit', meta: '31-day streak · Elite', xp: '3,970', me: false },
-              { rank: 99, emoji: '⭐', name: 'You', meta: '1-day streak · Newcomer', xp: '0', me: true },
+              { rank: 99, emoji: '⭐', name: 'You', meta: `${streak}-day streak`, xp: String(xp), me: true },
             ].map((r, i) => (
               <div key={i} style={{ margin: '0 20px 8px', background: r.me ? 'rgba(124,92,252,0.07)' : '#111118', border: `0.5px solid ${r.me ? 'rgba(124,92,252,0.35)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: r.me ? '#9d82ff' : '#6b6a7d', width: 22, textAlign: 'center', fontFamily: 'monospace' }}>{r.rank}</div>
@@ -319,11 +337,17 @@ export default function OrbRise() {
               <div>
                 <div style={{ fontSize: 20, fontWeight: 800 }}>Pavan S N</div>
                 <div style={{ fontSize: 12, color: '#9291a5', fontFamily: 'monospace' }}>@orbuser_7492</div>
-                <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(255,209,102,0.1)', border: '0.5px solid rgba(255,209,102,0.3)', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700, color: '#ffd166' }}>🌱 Newcomer · Rank #99</div>
+                <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(255,209,102,0.1)', border: '0.5px solid rgba(255,209,102,0.3)', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700, color: '#ffd166' }}>
+                  {xp >= 5000 ? '👑 OrbMaster' : xp >= 3000 ? '⚡ Elite' : xp >= 1000 ? '🔥 Challenger' : '🌱 Newcomer'} · Rank #99
+                </div>
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, margin: '0 20px 16px' }}>
-              {[{ val: '1', lbl: 'Streak', color: '#9d82ff' }, { val: '0', lbl: 'XP', color: '#ffd166' }, { val: '0%', lbl: 'Accuracy', color: '#00d4ff' }].map((s, i) => (
+              {[
+                { val: String(streak), lbl: 'Streak', color: '#9d82ff' },
+                { val: String(xp), lbl: 'XP', color: '#ffd166' },
+                { val: '0%', lbl: 'Accuracy', color: '#00d4ff' }
+              ].map((s, i) => (
                 <div key={i} style={{ background: '#111118', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: 12, textAlign: 'center' }}>
                   <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.val}</div>
                   <div style={{ fontSize: 10, color: '#9291a5', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>{s.lbl}</div>
