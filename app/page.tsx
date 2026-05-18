@@ -19,6 +19,8 @@ export default function OrbRise() {
   const [verifyError, setVerifyError] = useState('')
   const [streak, setStreak] = useState(1)
   const [xp, setXp] = useState(0)
+  const [walletAddress, setWalletAddress] = useState<string | null>(null)
+  const [step, setStep] = useState<'world-id' | 'wallet' | 'done'>('world-id')
   const challenge = challenges[0]
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function OrbRise() {
   const handleVerify = async () => {
     setVerifyError('')
     setVerifying(true)
+    setStep('world-id')
 
     try {
       const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
@@ -77,69 +80,96 @@ export default function OrbRise() {
       const data = await res.json()
 
       if (data.success) {
-  const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
+        const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
 
-  // Step 1: Wallet Auth via MiniKit
-  // Step 1: Wallet Auth via MiniKit
-let walletAddress = null
-try {
-  const { MiniKit, ResponseEvent } = await import('@worldcoin/minikit-js')
-  
-  MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-  await new Promise(resolve => setTimeout(resolve, 300))
+        // Save user first without wallet
+        const userRes = await fetch('/api/user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ world_id: nullifier }),
+        })
+        const userData = await userRes.json()
 
-  walletAddress = await new Promise((resolve) => {
-    MiniKit.subscribe(ResponseEvent.MiniAppWalletAuth, (payload: any) => {
-      MiniKit.unsubscribe(ResponseEvent.MiniAppWalletAuth)
-      if (payload.status === 'success') {
-        resolve(MiniKit.walletAddress || payload.address)
-      } else {
-        resolve(null)
-      }
-    })
+        if (userData.user) {
+          setStreak(userData.user.streak)
+          setXp(userData.user.xp)
+        }
 
-    const nonce = Math.random().toString(36).replace(/[^a-z0-9]/g, '').slice(0, 8)
-    MiniKit.commands.walletAuth({
-      nonce,
-      statement: 'Sign in to OrbRise',
-      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    })
-  })
-} catch (e) {
-  console.log('Wallet auth error:', String(e))
-}
-  // Step 2: Save user to Supabase with wallet
-  const userRes = await fetch('/api/user', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      world_id: nullifier,
-      wallet_address: walletAddress,
-    }),
-  })
-  const userData = await userRes.json()
-
-  if (userData.user) {
-    setStreak(userData.user.streak)
-    setXp(userData.user.xp)
-  }
-
-  setVerified(true)
+        // Move to wallet step
+        setStep('wallet')
+        setVerifying(false)
       } else {
         setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
+        setVerifying(false)
       }
     } catch (err) {
       setVerifyError('CATCH ERROR: ' + String(err))
-      console.error(err)
+      setVerifying(false)
+    }
+  }
+
+  const handleWalletAuth = async () => {
+    setVerifyError('')
+    setVerifying(true)
+
+    try {
+      const { MiniKit, ResponseEvent } = await import('@worldcoin/minikit-js')
+
+      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+      await new Promise(r => setTimeout(r, 500))
+
+      const wallet = await new Promise<string | null>((resolve) => {
+        const timeout = setTimeout(() => {
+          MiniKit.unsubscribe(ResponseEvent.MiniAppWalletAuth)
+          resolve(null)
+        }, 60000)
+
+        MiniKit.subscribe(ResponseEvent.MiniAppWalletAuth, (payload: any) => {
+          clearTimeout(timeout)
+          MiniKit.unsubscribe(ResponseEvent.MiniAppWalletAuth)
+          if (payload.status === 'success') {
+            resolve(MiniKit.walletAddress || payload.address || null)
+          } else {
+            resolve(null)
+          }
+        })
+
+        const nonce = Math.random().toString(36).replace(/[^a-z0-9]/gi, '').slice(0, 8)
+        MiniKit.commands.walletAuth({
+          nonce,
+          statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
+          expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        })
+      })
+
+      if (wallet) {
+        setWalletAddress(wallet)
+        // Update user with wallet address
+        await fetch('/api/user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
+        })
+      }
+
+      setStep('done')
+      setVerified(true)
+    } catch (e) {
+      setVerifyError('Wallet error: ' + String(e))
     } finally {
       setVerifying(false)
     }
   }
 
+  const skipWallet = () => {
+    setStep('done')
+    setVerified(true)
+  }
+
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
-  // GATE SCREEN
-  if (!verified) {
+  // GATE SCREEN - World ID
+  if (!verified && step === 'world-id') {
     return (
       <div style={{
         background: '#0a0a0f', minHeight: '100vh', color: '#f0eeff',
@@ -161,8 +191,13 @@ try {
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
           }}>OrbRise</div>
 
-          <div style={{ fontSize: 14, color: '#9291a5', lineHeight: 1.7, marginBottom: 40, padding: '0 8px' }}>
-            OrbRise uses World ID to ensure every player is a real human. Verify once to enter.
+          <div style={{ fontSize: 14, color: '#9291a5', lineHeight: 1.7, marginBottom: 8, padding: '0 8px' }}>
+            Step 1 of 2 — Verify you are a real human
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 32 }}>
+            <div style={{ width: 32, height: 4, borderRadius: 2, background: 'linear-gradient(90deg,#9d82ff,#00d4ff)' }} />
+            <div style={{ width: 32, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)' }} />
           </div>
 
           {verifyError && (
@@ -183,12 +218,78 @@ try {
             fontWeight: 700, color: verifying ? '#9291a5' : '#000',
             cursor: verifying ? 'default' : 'pointer', marginBottom: 16
           }}>
-            {verifying ? '🌐 Connecting to World ID...' : '🌐 Verify with World ID'}
+            {verifying ? '🌐 Verifying...' : '🌐 Verify with World ID'}
           </button>
 
           <div style={{ fontSize: 11, color: '#6b6a7d' }}>
             Powered by World ID · One-time verification
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  // GATE SCREEN - Wallet Auth
+  if (!verified && step === 'wallet') {
+    return (
+      <div style={{
+        background: '#0a0a0f', minHeight: '100vh', color: '#f0eeff',
+        fontFamily: 'system-ui, sans-serif', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', padding: 24
+      }}>
+        <div style={{ width: '100%', maxWidth: 380, textAlign: 'center' }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%',
+            background: 'linear-gradient(135deg,rgba(124,92,252,0.3),rgba(0,212,255,0.2))',
+            border: '1.5px solid rgba(124,92,252,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 36, margin: '0 auto 24px'
+          }}>💎</div>
+
+          <div style={{
+            fontSize: 28, fontWeight: 800, marginBottom: 8,
+            background: 'linear-gradient(135deg,#9d82ff,#00d4ff)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+          }}>Connect Wallet</div>
+
+          <div style={{ fontSize: 14, color: '#9291a5', lineHeight: 1.7, marginBottom: 8, padding: '0 8px' }}>
+            Step 2 of 2 — Connect your wallet for subscriptions and rewards
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 32 }}>
+            <div style={{ width: 32, height: 4, borderRadius: 2, background: 'rgba(6,214,160,0.5)' }} />
+            <div style={{ width: 32, height: 4, borderRadius: 2, background: 'linear-gradient(90deg,#9d82ff,#00d4ff)' }} />
+          </div>
+
+          {verifyError && (
+            <div style={{
+              background: 'rgba(255,77,109,0.1)', border: '0.5px solid rgba(255,77,109,0.3)',
+              borderRadius: 12, padding: '12px 16px', marginBottom: 16,
+              fontSize: 13, color: '#ff4d6d'
+            }}>
+              {verifyError}
+            </div>
+          )}
+
+          <button onClick={handleWalletAuth} disabled={verifying} style={{
+            width: '100%', padding: 18,
+            background: verifying ? '#1a1a24' : 'linear-gradient(135deg,#7c5cfc,#00d4ff)',
+            border: 'none',
+            borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
+            fontWeight: 700, color: '#fff',
+            cursor: verifying ? 'default' : 'pointer', marginBottom: 12
+          }}>
+            {verifying ? '💎 Connecting wallet...' : '💎 Connect World Wallet'}
+          </button>
+
+          <button onClick={skipWallet} style={{
+            width: '100%', padding: 14,
+            background: 'none', border: 'none',
+            fontFamily: 'system-ui', fontSize: 13,
+            color: '#6b6a7d', cursor: 'pointer'
+          }}>
+            Skip for now
+          </button>
         </div>
       </div>
     )
@@ -394,6 +495,16 @@ try {
                 <div style={{ fontSize: 12, color: '#9291a5' }}>Confirmed real human</div>
               </div>
               <div style={{ color: '#06d6a0', fontSize: 18 }}>✓</div>
+            </div>
+            <div style={{ margin: '0 20px 16px', background: '#111118', border: `0.5px solid ${walletAddress ? 'rgba(6,214,160,0.3)' : 'rgba(255,255,255,0.13)'}`, borderRadius: 14, padding: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', background: walletAddress ? 'rgba(6,214,160,0.1)' : '#1a1a24', border: '1.5px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>💎</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{walletAddress ? 'Wallet Connected' : 'Wallet Not Connected'}</div>
+                <div style={{ fontSize: 12, color: '#9291a5' }}>
+                  {walletAddress ? `${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}` : 'Connect for subscriptions & rewards'}
+                </div>
+              </div>
+              <div style={{ color: walletAddress ? '#06d6a0' : '#ffd166', fontSize: 18 }}>{walletAddress ? '✓' : '!'}</div>
             </div>
             <div style={{ margin: '0 20px 16px', background: 'linear-gradient(135deg,rgba(124,92,252,0.2),rgba(0,212,255,0.1))', border: '0.5px solid rgba(124,92,252,0.35)', borderRadius: 14, padding: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ fontSize: 28 }}>👑</div>
