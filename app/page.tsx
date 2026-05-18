@@ -34,182 +34,124 @@ export default function OrbRise() {
     setAnswered(i)
   }
 
-  // ── handleVerify ─────────────────────────────────────────────
-const handleVerify = async () => {
-  setVerifyError('')
-  setVerifying(true)
-  setStep('world-id')
+  const handleVerify = async () => {
+    setVerifyError('')
+    setVerifying(true)
+    setStep('world-id')
 
-  try {
-    const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
+    try {
+      const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
 
-    const rpRes = await fetch('/api/rp-signature', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'orbrise-verify' }),
-    })
-    const rpSig = await rpRes.json()
-
-    if (rpSig.error) {
-      setVerifyError('RP error: ' + rpSig.error)
-      setVerifying(false)
-      return
-    }
-
-    const request = await IDKit.request({
-      app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
-      action: 'orbrise-verify',
-      rp_context: {
-        rp_id: process.env.NEXT_PUBLIC_RP_ID as `rp_${string}`,
-        nonce: rpSig.nonce,
-        created_at: rpSig.created_at,
-        expires_at: rpSig.expires_at,
-        signature: rpSig.sig,
-      },
-      allow_legacy_proofs: true,
-      environment: 'production',
-    }).preset(orbLegacy())
-
-    const finalPayload = await request.pollUntilCompletion()
-
-    const res = await fetch('/api/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(finalPayload),
-    })
-
-    const data = await res.json()
-
-    if (data.success) {
-      const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
-
-      const userRes = await fetch('/api/user', {
+      const rpRes = await fetch('/api/rp-signature', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ world_id: nullifier }),
+        body: JSON.stringify({ action: 'orbrise-verify' }),
       })
-      const userData = await userRes.json()
+      const rpSig = await rpRes.json()
 
-      if (userData.user) {
-        setStreak(userData.user.streak)
-        setXp(userData.user.xp)
-
-        // Returning user with wallet already saved — skip wallet step
-        if (userData.user.wallet_address) {
-          setWalletAddress(userData.user.wallet_address)
-          setStep('done')
-          setVerified(true)
-          return
-        }
+      if (rpSig.error) {
+        setVerifyError('RP error: ' + rpSig.error)
+        setVerifying(false)
+        return
       }
 
-      // First login — go to wallet step
-      setStep('wallet')
-      setVerifying(false)
-    } else {
-      setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
-      setVerifying(false)
-    }
-  } catch (err) {
-    setVerifyError('CATCH ERROR: ' + String(err))
-    setVerifying(false)
-  }
-}
+      const request = await IDKit.request({
+        app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
+        action: 'orbrise-verify',
+        rp_context: {
+          rp_id: process.env.NEXT_PUBLIC_RP_ID as `rp_${string}`,
+          nonce: rpSig.nonce,
+          created_at: rpSig.created_at,
+          expires_at: rpSig.expires_at,
+          signature: rpSig.sig,
+        },
+        allow_legacy_proofs: true,
+        environment: 'production',
+      }).preset(orbLegacy())
 
-// ── handleWalletAuth ──────────────────────────────────────────
-const handleWalletAuth = async () => {
-  setVerifyError('')
-  setVerifying(true)
+      const finalPayload = await request.pollUntilCompletion()
 
-  try {
-    const MiniKitModule = await import('@worldcoin/minikit-js')
-    const MiniKit = MiniKitModule.MiniKit
+      const res = await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload),
+      })
 
-    MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-    await new Promise(r => setTimeout(r, 500))
+      const data = await res.json()
 
-    const nonce = Math.random().toString(36).replace(/[^a-z0-9]/gi, '').slice(0, 8)
+      if (data.success) {
+        const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
 
-    // MiniKit v2 — call walletAuth() directly, no .commands, no subscribe
-    const { finalPayload } = await MiniKit.walletAuth({
-      nonce,
-      statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
-      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    })
-
-    if (finalPayload?.status === 'success') {
-      const wallet = MiniKit.walletAddress || (finalPayload as any).address || null
-      if (wallet) {
-        setWalletAddress(wallet)
-        await fetch('/api/user', {
+        const userRes = await fetch('/api/user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
+          body: JSON.stringify({ world_id: nullifier }),
         })
-      }
-    }
+        const userData = await userRes.json()
 
-    setStep('done')
-    setVerified(true)
-  } catch (e) {
-    setVerifyError('Wallet error: ' + String(e))
-  } finally {
-    setVerifying(false)
+        if (userData.user) {
+          setStreak(userData.user.streak)
+          setXp(userData.user.xp)
+
+          if (userData.user.wallet_address) {
+            setWalletAddress(userData.user.wallet_address)
+            setStep('done')
+            setVerified(true)
+            return
+          }
+        }
+
+        setStep('wallet')
+        setVerifying(false)
+      } else {
+        setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
+        setVerifying(false)
+      }
+    } catch (err) {
+      setVerifyError('CATCH ERROR: ' + String(err))
+      setVerifying(false)
+    }
   }
-}
 
   const handleWalletAuth = async () => {
-  setVerifyError('')
-  setVerifying(true)
+    setVerifyError('')
+    setVerifying(true)
 
-  try {
-    const MiniKitModule = await import('@worldcoin/minikit-js')
-    const MiniKit = MiniKitModule.MiniKit
+    try {
+      const MiniKitModule = await import('@worldcoin/minikit-js')
+      const MiniKit = MiniKitModule.MiniKit
 
-    MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-    await new Promise(r => setTimeout(r, 500))
-
-    const wallet = await new Promise<string | null>((resolve) => {
-      const timeout = setTimeout(() => {
-        MiniKit.unsubscribe('miniapp-wallet-auth' as any)
-        resolve(null)
-      }, 60000)
-
-      MiniKit.subscribe('miniapp-wallet-auth' as any, (payload: any) => {
-        clearTimeout(timeout)
-        MiniKit.unsubscribe('miniapp-wallet-auth' as any)
-        if (payload.status === 'success') {
-          resolve(MiniKit.walletAddress || payload.address || null)
-        } else {
-          resolve(null)
-        }
-      })
+      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+      await new Promise(r => setTimeout(r, 500))
 
       const nonce = Math.random().toString(36).replace(/[^a-z0-9]/gi, '').slice(0, 8)
-      MiniKit.commands.walletAuth({
+
+      const { finalPayload } = await MiniKit.walletAuth({
         nonce,
         statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
-        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       })
-    })
 
-    if (wallet) {
-      setWalletAddress(wallet)
-      await fetch('/api/user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
-      })
+      if (finalPayload?.status === 'success') {
+        const wallet = MiniKit.walletAddress || (finalPayload as any).address || null
+        if (wallet) {
+          setWalletAddress(wallet)
+          await fetch('/api/user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
+          })
+        }
+      }
+
+      setStep('done')
+      setVerified(true)
+    } catch (e) {
+      setVerifyError('Wallet error: ' + String(e))
+    } finally {
+      setVerifying(false)
     }
-
-    setStep('done')
-    setVerified(true)
-  } catch (e) {
-    setVerifyError('Wallet error: ' + String(e))
-  } finally {
-    setVerifying(false)
   }
-}
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
@@ -274,7 +216,7 @@ const handleWalletAuth = async () => {
     )
   }
 
-  // GATE SCREEN - Wallet Auth (no skip button)
+  // GATE SCREEN - Wallet Auth
   if (!verified && step === 'wallet') {
     return (
       <div style={{
@@ -322,7 +264,7 @@ const handleWalletAuth = async () => {
             border: 'none',
             borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
             fontWeight: 700, color: '#fff',
-            cursor: verifying ? 'default' : 'pointer', marginBottom: 12
+            cursor: verifying ? 'default' : 'pointer',
           }}>
             {verifying ? '💎 Connecting wallet...' : '💎 Connect World Wallet'}
           </button>
