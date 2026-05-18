@@ -148,8 +148,7 @@ export default function OrbRise() {
         MiniKit.commands.walletAuth({
           nonce,
           statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
-          expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        })
+        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),        })
       })
 
       if (wallet) {
