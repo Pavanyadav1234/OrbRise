@@ -129,7 +129,7 @@ export default function OrbRise() {
       const { finalPayload } = await MiniKit.walletAuth({
         nonce,
         statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
-        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       })
 
       if (finalPayload?.status === 'success') {
