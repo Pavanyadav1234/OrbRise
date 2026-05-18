@@ -82,7 +82,6 @@ export default function OrbRise() {
       if (data.success) {
         const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
 
-        // Save user first without wallet
         const userRes = await fetch('/api/user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -91,21 +90,28 @@ export default function OrbRise() {
         const userData = await userRes.json()
 
         if (userData.user) {
-  setStreak(userData.user.streak)
-  setXp(userData.user.xp)
-  
-  // If wallet already saved, skip wallet step
-  if (userData.user.wallet_address) {
-    setWalletAddress(userData.user.wallet_address)
-    setStep('done')
-    setVerified(true)
-    return
-  }
-}
+          setStreak(userData.user.streak)
+          setXp(userData.user.xp)
 
-// First time - go to wallet step
-setStep('wallet')
-setVerifying(false)
+          // If wallet already saved, skip wallet step
+          if (userData.user.wallet_address) {
+            setWalletAddress(userData.user.wallet_address)
+            setStep('done')
+            setVerified(true)
+            return
+          }
+        }
+
+        // First time — go to wallet step
+        setStep('wallet')
+        setVerifying(false)
+      } else {
+        setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
+        setVerifying(false)
+      }
+    } catch (err) {
+      setVerifyError('CATCH ERROR: ' + String(err))
+      setVerifying(false)
     }
   }
 
@@ -147,7 +153,6 @@ setVerifying(false)
 
       if (wallet) {
         setWalletAddress(wallet)
-        // Update user with wallet address
         await fetch('/api/user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -162,11 +167,6 @@ setVerifying(false)
     } finally {
       setVerifying(false)
     }
-  }
-
-  const skipWallet = () => {
-    setStep('done')
-    setVerified(true)
   }
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
@@ -232,7 +232,7 @@ setVerifying(false)
     )
   }
 
-  // GATE SCREEN - Wallet Auth
+  // GATE SCREEN - Wallet Auth (no skip button)
   if (!verified && step === 'wallet') {
     return (
       <div style={{
@@ -283,15 +283,6 @@ setVerifying(false)
             cursor: verifying ? 'default' : 'pointer', marginBottom: 12
           }}>
             {verifying ? '💎 Connecting wallet...' : '💎 Connect World Wallet'}
-          </button>
-
-          <button onClick={skipWallet} style={{
-            width: '100%', padding: 14,
-            background: 'none', border: 'none',
-            fontFamily: 'system-ui', fontSize: 13,
-            color: '#6b6a7d', cursor: 'pointer'
-          }}>
-            Skip for now
           </button>
         </div>
       </div>
