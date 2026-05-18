@@ -93,14 +93,17 @@ export default function OrbRise() {
           setStreak(userData.user.streak)
           setXp(userData.user.xp)
 
+          // Already has wallet — skip wallet step
           if (userData.user.wallet_address) {
             setWalletAddress(userData.user.wallet_address)
             setStep('done')
             setVerified(true)
+            setVerifying(false)
             return
           }
         }
 
+        // First time — go to wallet step
         setStep('wallet')
         setVerifying(false)
       } else {
@@ -120,28 +123,42 @@ export default function OrbRise() {
     try {
       const MiniKitModule = await import('@worldcoin/minikit-js')
       const MiniKit = MiniKitModule.MiniKit
+      const ResponseEvent = MiniKitModule.ResponseEvent
 
       MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
       await new Promise(r => setTimeout(r, 500))
 
-      const nonce = Math.random().toString(36).replace(/[^a-z0-9]/gi, '').slice(0, 8)
+      const wallet = await new Promise<string | null>((resolve) => {
+        const timeout = setTimeout(() => {
+          MiniKit.unsubscribe(ResponseEvent.MiniAppWalletAuth)
+          resolve(null)
+        }, 60000)
 
-      const { finalPayload } = await MiniKit.walletAuth({
-        nonce,
-        statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
-        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        MiniKit.subscribe(ResponseEvent.MiniAppWalletAuth, (payload: any) => {
+          clearTimeout(timeout)
+          MiniKit.unsubscribe(ResponseEvent.MiniAppWalletAuth)
+          if (payload.status === 'success') {
+            resolve(MiniKit.walletAddress || payload.address || null)
+          } else {
+            resolve(null)
+          }
+        })
+
+        const nonce = Math.random().toString(36).replace(/[^a-z0-9]/gi, '').slice(0, 8)
+        MiniKit.commands.walletAuth({
+          nonce,
+          statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
+          expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        })
       })
 
-      if (finalPayload?.status === 'success') {
-        const wallet = MiniKit.walletAddress || (finalPayload as any).address || null
-        if (wallet) {
-          setWalletAddress(wallet)
-          await fetch('/api/user', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
-          })
-        }
+      if (wallet) {
+        setWalletAddress(wallet)
+        await fetch('/api/user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
+        })
       }
 
       setStep('done')
@@ -155,7 +172,7 @@ export default function OrbRise() {
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
-  // GATE SCREEN - World ID
+  // GATE SCREEN - Step 1: World ID
   if (!verified && step === 'world-id') {
     return (
       <div style={{
@@ -216,7 +233,7 @@ export default function OrbRise() {
     )
   }
 
-  // GATE SCREEN - Wallet Auth
+  // GATE SCREEN - Step 2: Wallet
   if (!verified && step === 'wallet') {
     return (
       <div style={{
