@@ -116,58 +116,57 @@ export default function OrbRise() {
   }
 
   const handleWalletAuth = async () => {
-    setVerifyError('')
-    setVerifying(true)
+  setVerifyError('')
+  setVerifying(true)
 
-    try {
-      const MiniKitModule = await import('@worldcoin/minikit-js')
-      const MiniKit = MiniKitModule.MiniKit
-      const ResponseEvent = MiniKitModule.ResponseEvent
+  try {
+    const MiniKitModule = await import('@worldcoin/minikit-js')
+    const MiniKit = MiniKitModule.MiniKit
 
-      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-      await new Promise(r => setTimeout(r, 500))
+    MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+    await new Promise(r => setTimeout(r, 500))
 
-      const wallet = await new Promise<string | null>((resolve) => {
-        const timeout = setTimeout(() => {
-          MiniKit.unsubscribe(ResponseEvent.MiniAppWalletAuth)
+    const wallet = await new Promise<string | null>((resolve) => {
+      const timeout = setTimeout(() => {
+        MiniKit.unsubscribe('miniapp-wallet-auth' as any)
+        resolve(null)
+      }, 60000)
+
+      MiniKit.subscribe('miniapp-wallet-auth' as any, (payload: any) => {
+        clearTimeout(timeout)
+        MiniKit.unsubscribe('miniapp-wallet-auth' as any)
+        if (payload.status === 'success') {
+          resolve(MiniKit.walletAddress || payload.address || null)
+        } else {
           resolve(null)
-        }, 60000)
-
-        MiniKit.subscribe(ResponseEvent.MiniAppWalletAuth, (payload: any) => {
-          clearTimeout(timeout)
-          MiniKit.unsubscribe(ResponseEvent.MiniAppWalletAuth)
-          if (payload.status === 'success') {
-            resolve(MiniKit.walletAddress || payload.address || null)
-          } else {
-            resolve(null)
-          }
-        })
-
-        const nonce = Math.random().toString(36).replace(/[^a-z0-9]/gi, '').slice(0, 8)
-        MiniKit.commands.walletAuth({
-          nonce,
-          statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
-          expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        })
+        }
       })
 
-      if (wallet) {
-        setWalletAddress(wallet)
-        await fetch('/api/user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
-        })
-      }
+      const nonce = Math.random().toString(36).replace(/[^a-z0-9]/gi, '').slice(0, 8)
+      MiniKit.commands.walletAuth({
+        nonce,
+        statement: 'Connect your wallet to OrbRise for subscriptions and rewards',
+        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      })
+    })
 
-      setStep('done')
-      setVerified(true)
-    } catch (e) {
-      setVerifyError('Wallet error: ' + String(e))
-    } finally {
-      setVerifying(false)
+    if (wallet) {
+      setWalletAddress(wallet)
+      await fetch('/api/user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
+      })
     }
+
+    setStep('done')
+    setVerified(true)
+  } catch (e) {
+    setVerifyError('Wallet error: ' + String(e))
+  } finally {
+    setVerifying(false)
   }
+}
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
