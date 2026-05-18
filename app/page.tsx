@@ -91,20 +91,21 @@ export default function OrbRise() {
         const userData = await userRes.json()
 
         if (userData.user) {
-          setStreak(userData.user.streak)
-          setXp(userData.user.xp)
-        }
+  setStreak(userData.user.streak)
+  setXp(userData.user.xp)
+  
+  // If wallet already saved, skip wallet step
+  if (userData.user.wallet_address) {
+    setWalletAddress(userData.user.wallet_address)
+    setStep('done')
+    setVerified(true)
+    return
+  }
+}
 
-        // Move to wallet step
-        setStep('wallet')
-        setVerifying(false)
-      } else {
-        setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
-        setVerifying(false)
-      }
-    } catch (err) {
-      setVerifyError('CATCH ERROR: ' + String(err))
-      setVerifying(false)
+// First time - go to wallet step
+setStep('wallet')
+setVerifying(false)
     }
   }
 
@@ -113,7 +114,9 @@ export default function OrbRise() {
     setVerifying(true)
 
     try {
-      const { MiniKit, ResponseEvent } = await import('@worldcoin/minikit-js')
+      const MiniKitModule = await import('@worldcoin/minikit-js')
+      const MiniKit = MiniKitModule.MiniKit
+      const ResponseEvent = MiniKitModule.ResponseEvent
 
       MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
       await new Promise(r => setTimeout(r, 500))
