@@ -34,87 +34,44 @@ export default function OrbRise() {
     setAnswered(i)
   }
 
-  const handleVerify = async () => {
-    setVerifyError('')
-    setVerifying(true)
-    setStep('world-id')
+  const handleWalletAuth = async () => {
+  setVerifyError('')
+  setVerifying(true)
 
-    try {
-      const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
+  try {
+    const { MiniKit } = await import('@worldcoin/minikit-js')
 
-      const rpRes = await fetch('/api/rp-signature', {
+    MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+    await new Promise(r => setTimeout(r, 500))
+
+    const { finalPayload } = await MiniKit.walletAuth({
+      nonce: Math.random().toString(36).slice(2, 10),
+      statement: 'Sign in to OrbRise',
+      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    })
+
+    if (finalPayload.status === 'success') {
+      const wallet = finalPayload.address
+      setWalletAddress(wallet)
+
+      await fetch('/api/user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'orbrise-verify' }),
-      })
-      const rpSig = await rpRes.json()
-
-      if (rpSig.error) {
-        setVerifyError('RP error: ' + rpSig.error)
-        setVerifying(false)
-        return
-      }
-
-      const request = await IDKit.request({
-        app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
-        action: 'orbrise-verify',
-        rp_context: {
-          rp_id: process.env.NEXT_PUBLIC_RP_ID as `rp_${string}`,
-          nonce: rpSig.nonce,
-          created_at: rpSig.created_at,
-          expires_at: rpSig.expires_at,
-          signature: rpSig.sig,
-        },
-        allow_legacy_proofs: true,
-        environment: 'production',
-      }).preset(orbLegacy())
-
-      const finalPayload = await request.pollUntilCompletion()
-
-      const res = await fetch('/api/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalPayload),
+        body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
       })
 
-      const data = await res.json()
-
-      if (data.success) {
-        const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
-
-        const userRes = await fetch('/api/user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ world_id: nullifier }),
-        })
-        const userData = await userRes.json()
-
-        if (userData.user) {
-          setStreak(userData.user.streak)
-          setXp(userData.user.xp)
-
-          // Already has wallet — skip wallet step
-          if (userData.user.wallet_address) {
-            setWalletAddress(userData.user.wallet_address)
-            setStep('done')
-            setVerified(true)
-            setVerifying(false)
-            return
-          }
-        }
-
-        // First time — go to wallet step
-        setStep('wallet')
-        setVerifying(false)
-      } else {
-        setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
-        setVerifying(false)
-      }
-    } catch (err) {
-      setVerifyError('CATCH ERROR: ' + String(err))
-      setVerifying(false)
+      setStep('done')
+      setVerified(true)
+    } else {
+      setVerifyError('Wallet connection failed. Try again.')
     }
+  } catch (e) {
+    setVerifyError('Wallet error: ' + String(e))
+  } finally {
+    setVerifying(false)
   }
+}
 
   const handleWalletAuth = async () => {
   setVerifyError('')
