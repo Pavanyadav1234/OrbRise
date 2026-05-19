@@ -140,16 +140,9 @@ const handleSubscribe = async () => {
             </div>
           )}
 
-          <button onClick={handleVerify} disabled={verifying} style={{
-            width: '100%', padding: 18,
-            background: verifying ? '#1a1a24' : '#fff',
-            border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none',
-            borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
-            fontWeight: 700, color: verifying ? '#9291a5' : '#000',
-            cursor: verifying ? 'default' : 'pointer', marginBottom: 16
-          }}>
-            {verifying ? '🌐 Verifying...' : '🌐 Verify with World ID'}
-          </button>
+         <button onClick={handleVerify} disabled={verifying} style={{...}}>
+  {verifying ? '🌐 Signing in...' : '🌐 Sign in with World App'}
+</button>
 
           <div style={{ fontSize: 11, color: '#6b6a7d' }}>
             Powered by World ID · One-time verification
