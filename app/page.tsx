@@ -125,48 +125,54 @@ export default function OrbRise() {
     await new Promise(r => setTimeout(r, 500))
 
     const result = await MiniKit.walletAuth({
-  nonce: Math.random().toString(36).slice(2, 10),
-  statement: 'Sign in to OrbRise',
-  expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
-})
+      nonce: Math.random().toString(36).slice(2, 10),
+      statement: 'Sign in to OrbRise',
+      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    })
 
-// Response is { executedWith: 'minikit', data: { address, signature, ... } }
-const address = result?.data?.address || result?.finalPayload?.address || MiniKit.walletAddress
+    const address = result?.data?.address || result?.finalPayload?.address || MiniKit.walletAddress
 
-if (address) {
-  setWalletAddress(address)
+    if (address) {
+      setWalletAddress(address)
 
-  await fetch('/api/user', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ world_id: 'update', wallet_address: address }),
-  })
-
-  setStep('done')
-  setVerified(true)
-} else {
-  setVerifyError('Could not get wallet address. Try again.')
-}
-  const handleSubscribe = async () => {
-    try {
-      const { MiniKit, Tokens, tokenToDecimals } = await import('@worldcoin/minikit-js')
-      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-      await new Promise(r => setTimeout(r, 300))
-
-      await MiniKit.pay({
-        reference: `sub_${Date.now()}`,
-        to: '0x6b835184085539ee8705b326dca844fb56e8423f',
-        tokens: [{
-          symbol: Tokens.WLD,
-          token_amount: tokenToDecimals(1, Tokens.WLD).toString(),
-        }],
-        description: 'OrbRise Pro — 1 WLD/month',
+      await fetch('/api/user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ world_id: 'update', wallet_address: address }),
       })
-    } catch (e) {
-      console.error('Payment error:', e)
+
+      setStep('done')
+      setVerified(true)
+    } else {
+      setVerifyError('Could not get wallet address. Try again.')
     }
+  } catch (err) {
+    setVerifyError('Wallet error: ' + String(err))
+  } finally {
+    setVerifying(false)
   }
+}
+
+const handleSubscribe = async () => {
+  try {
+    const { MiniKit, Tokens, tokenToDecimals } = await import('@worldcoin/minikit-js')
+    MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+    await new Promise(r => setTimeout(r, 300))
+
+    await MiniKit.pay({
+      reference: `sub_${Date.now()}`,
+      to: '0x6b835184085539ee8705b326dca844fb56e8423f',
+      tokens: [{
+        symbol: Tokens.WLD,
+        token_amount: tokenToDecimals(1, Tokens.WLD).toString(),
+      }],
+      description: 'OrbRise Pro — 1 WLD/month',
+    })
+  } catch (e) {
+    console.error('Payment error:', e)
+  }
+}
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
