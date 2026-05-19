@@ -125,45 +125,29 @@ export default function OrbRise() {
     await new Promise(r => setTimeout(r, 500))
 
     const result = await MiniKit.walletAuth({
-      nonce: Math.random().toString(36).slice(2, 10),
-      statement: 'Sign in to OrbRise',
-      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    })
+  nonce: Math.random().toString(36).slice(2, 10),
+  statement: 'Sign in to OrbRise',
+  expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
+})
 
-    console.log('walletAuth result:', JSON.stringify(result))
+// Response is { executedWith: 'minikit', data: { address, signature, ... } }
+const address = result?.data?.address || result?.finalPayload?.address || MiniKit.walletAddress
 
-    // Handle different response shapes
-    const payload = result?.finalPayload || result
-    const status = payload?.status
-    const address = payload?.address || MiniKit.walletAddress
+if (address) {
+  setWalletAddress(address)
 
-    if (status === 'success' && address) {
-      setWalletAddress(address)
+  await fetch('/api/user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ world_id: 'update', wallet_address: address }),
+  })
 
-      await fetch('/api/user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ world_id: 'update', wallet_address: address }),
-      })
-
-      setStep('done')
-      setVerified(true)
-    } else if (address) {
-      // Some versions just return address directly
-      setWalletAddress(address)
-      setStep('done')
-      setVerified(true)
-    } else {
-      setVerifyError('DEBUG: ' + JSON.stringify(result))
-    }
-  } catch (e) {
-    setVerifyError('Wallet error: ' + String(e))
-  } finally {
-    setVerifying(false)
-  }
+  setStep('done')
+  setVerified(true)
+} else {
+  setVerifyError('Could not get wallet address. Try again.')
 }
-
   const handleSubscribe = async () => {
     try {
       const { MiniKit, Tokens, tokenToDecimals } = await import('@worldcoin/minikit-js')
