@@ -34,88 +34,144 @@ export default function OrbRise() {
     setAnswered(i)
   }
 
-  const handleWalletAuth = async () => {
-  setVerifyError('')
-  setVerifying(true)
+  const handleVerify = async () => {
+    setVerifyError('')
+    setVerifying(true)
+    setStep('world-id')
 
-  try {
-    const { MiniKit } = await import('@worldcoin/minikit-js')
+    try {
+      const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
 
-    MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-    await new Promise(r => setTimeout(r, 500))
-
-    const { finalPayload } = await MiniKit.walletAuth({
-      nonce: Math.random().toString(36).slice(2, 10),
-      statement: 'Sign in to OrbRise',
-      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    })
-
-    if (finalPayload.status === 'success') {
-      const wallet = finalPayload.address
-      setWalletAddress(wallet)
-
-      await fetch('/api/user', {
+      const rpRes = await fetch('/api/rp-signature', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
+        body: JSON.stringify({ action: 'orbrise-verify' }),
+      })
+      const rpSig = await rpRes.json()
+
+      if (rpSig.error) {
+        setVerifyError('RP error: ' + rpSig.error)
+        setVerifying(false)
+        return
+      }
+
+      const request = await IDKit.request({
+        app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
+        action: 'orbrise-verify',
+        rp_context: {
+          rp_id: process.env.NEXT_PUBLIC_RP_ID as `rp_${string}`,
+          nonce: rpSig.nonce,
+          created_at: rpSig.created_at,
+          expires_at: rpSig.expires_at,
+          signature: rpSig.sig,
+        },
+        allow_legacy_proofs: true,
+        environment: 'production',
+      }).preset(orbLegacy())
+
+      const finalPayload = await request.pollUntilCompletion()
+
+      const res = await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload),
       })
 
-      setStep('done')
-      setVerified(true)
-    } else {
-      setVerifyError('Wallet connection failed. Try again.')
-    }
-  } catch (e) {
-    setVerifyError('Wallet error: ' + String(e))
-  } finally {
-    setVerifying(false)
-  }
-}
+      const data = await res.json()
 
-  const handleWalletAuth = async () => {
-  setVerifyError('')
-  setVerifying(true)
+      if (data.success) {
+        const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
 
-  try {
-    const { MiniKit } = await import('@worldcoin/minikit-js')
+        const userRes = await fetch('/api/user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ world_id: nullifier }),
+        })
+        const userData = await userRes.json()
 
-    MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-    await new Promise(r => setTimeout(r, 500))
+        if (userData.user) {
+          setStreak(userData.user.streak)
+          setXp(userData.user.xp)
 
-    if (!MiniKit.isInstalled()) {
-      setVerifyError('Please open inside World App')
+          if (userData.user.wallet_address) {
+            setWalletAddress(userData.user.wallet_address)
+            setStep('done')
+            setVerified(true)
+            setVerifying(false)
+            return
+          }
+        }
+
+        setStep('wallet')
+        setVerifying(false)
+      } else {
+        setVerifyError('Backend failed: ' + JSON.stringify(data.detail || data))
+        setVerifying(false)
+      }
+    } catch (err) {
+      setVerifyError('CATCH ERROR: ' + String(err))
       setVerifying(false)
-      return
     }
-
-    // Use commandsAsync — no ResponseEvent needed
-    const { finalPayload } = await MiniKit.commandsAsync.walletAuth({
-      nonce: Math.random().toString(36).slice(2, 10), // alphanumeric only
-      statement: 'Sign in to OrbRise',
-      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    })
-
-    if (finalPayload.status === 'success') {
-      const wallet = finalPayload.address
-      setWalletAddress(wallet)
-
-      await fetch('/api/user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
-      })
-    }
-
-    setStep('done')
-    setVerified(true)
-  } catch (e) {
-    setVerifyError('Wallet error: ' + String(e))
-  } finally {
-    setVerifying(false)
   }
-}
+
+  const handleWalletAuth = async () => {
+    setVerifyError('')
+    setVerifying(true)
+
+    try {
+      const { MiniKit } = await import('@worldcoin/minikit-js')
+
+      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+      await new Promise(r => setTimeout(r, 500))
+
+      const { finalPayload } = await MiniKit.walletAuth({
+        nonce: Math.random().toString(36).slice(2, 10),
+        statement: 'Sign in to OrbRise',
+        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      })
+
+      if (finalPayload.status === 'success') {
+        const wallet = finalPayload.address
+        setWalletAddress(wallet)
+
+        await fetch('/api/user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ world_id: 'update', wallet_address: wallet }),
+        })
+
+        setStep('done')
+        setVerified(true)
+      } else {
+        setVerifyError('Wallet connection failed. Try again.')
+      }
+    } catch (e) {
+      setVerifyError('Wallet error: ' + String(e))
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const handleSubscribe = async () => {
+    try {
+      const { MiniKit, Tokens, tokenToDecimals } = await import('@worldcoin/minikit-js')
+      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+      await new Promise(r => setTimeout(r, 300))
+
+      await MiniKit.pay({
+        reference: `sub_${Date.now()}`,
+        to: '0x6b835184085539ee8705b326dca844fb56e8423f',
+        tokens: [{
+          symbol: Tokens.WLD,
+          token_amount: tokenToDecimals(1, Tokens.WLD).toString(),
+        }],
+        description: 'OrbRise Pro — 1 WLD/month',
+      })
+    } catch (e) {
+      console.error('Payment error:', e)
+    }
+  }
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
@@ -454,7 +510,9 @@ export default function OrbRise() {
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#9d82ff' }}>Upgrade to Pro</div>
                 <div style={{ fontSize: 12, color: '#9291a5' }}>Streak shield · AI hints · Elite leaderboard</div>
               </div>
-              <button style={{ background: 'linear-gradient(135deg,#7c5cfc,#4fa3ff)', border: 'none', borderRadius: 8, padding: '8px 14px', color: '#fff', fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>₹99/mo</button>
+              <button onClick={handleSubscribe} style={{ background: 'linear-gradient(135deg,#7c5cfc,#4fa3ff)', border: 'none', borderRadius: 8, padding: '8px 14px', color: '#fff', fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                1 WLD/mo
+              </button>
             </div>
           </div>
         )}
