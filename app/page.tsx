@@ -17,6 +17,7 @@ export default function OrbRise() {
   const [verified, setVerified] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState('')
+  const [verifyStep, setVerifyStep] = useState<'idle' | 'world-id' | 'wallet' | 'done'>('idle')
   const [streak, setStreak] = useState(1)
   const [xp, setXp] = useState(0)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
@@ -33,62 +34,98 @@ export default function OrbRise() {
     setAnswered(i)
   }
 
-  const handleVerify = async () => {
+  const handleSignIn = async () => {
     setVerifyError('')
     setVerifying(true)
 
     try {
-      const { MiniKit } = await import('@worldcoin/minikit-js')
+      // ── Step 1: World ID ──────────────────────────────────
+      setVerifyStep('world-id')
+      const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
 
+      const rpRes = await fetch('/api/rp-signature', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'orbrise-verify' }),
+      })
+      const rpSig = await rpRes.json()
+
+      if (rpSig.error) {
+        setVerifyError('RP error: ' + rpSig.error)
+        setVerifying(false)
+        setVerifyStep('idle')
+        return
+      }
+
+      const request = await IDKit.request({
+        app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
+        action: 'orbrise-verify',
+        rp_context: {
+          rp_id: process.env.NEXT_PUBLIC_RP_ID as `rp_${string}`,
+          nonce: rpSig.nonce,
+          created_at: rpSig.created_at,
+          expires_at: rpSig.expires_at,
+          signature: rpSig.sig,
+        },
+        allow_legacy_proofs: true,
+        environment: 'production',
+      }).preset(orbLegacy())
+
+      const finalPayload = await request.pollUntilCompletion()
+
+      const res = await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload),
+      })
+      const data = await res.json()
+
+      if (!data.success) {
+        setVerifyError('Verification failed: ' + JSON.stringify(data.detail || data))
+        setVerifying(false)
+        setVerifyStep('idle')
+        return
+      }
+
+      const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
+
+      // ── Step 2: Wallet Auth ───────────────────────────────
+      setVerifyStep('wallet')
+      const { MiniKit } = await import('@worldcoin/minikit-js')
       MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
       await new Promise(r => setTimeout(r, 500))
 
-      // Get nonce from backend
-      const nonceRes = await fetch('/api/nonce')
-      const { nonce } = await nonceRes.json()
+      let wallet: string | null = null
 
-      // walletAuth — shows World App popup with Wallet + Verification level together
       const result = await MiniKit.walletAuth({
-        nonce,
+        nonce: Math.random().toString(36).slice(2, 10),
         statement: 'Sign in to OrbRise',
         expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
       })
 
-      if (result?.finalPayload?.status === 'error') {
-        setVerifyError('World App rejected the request')
-        return
-      }
+      wallet = result?.data?.address || result?.finalPayload?.address || MiniKit.walletAddress || null
 
-      // Verify signature on backend
-      const verifyRes = await fetch('/api/verify-wallet', {
+      if (wallet) setWalletAddress(wallet)
+
+      // ── Step 3: Save to Supabase ─────────────────────────
+      setVerifyStep('done')
+      const userRes = await fetch('/api/user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          payload: result.finalPayload,
-          nonce,
-        }),
+        body: JSON.stringify({ world_id: nullifier, wallet_address: wallet }),
       })
+      const userData = await userRes.json()
 
-      const verifyData = await verifyRes.json()
-
-      if (verifyData.success) {
-        const address = result.finalPayload.address
-
-        setWalletAddress(address)
-
-        await fetch('/api/user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ world_id: address, wallet_address: address }),
-        })
-
-        setVerified(true)
-      } else {
-        setVerifyError('Verification failed: ' + (verifyData.error || 'Unknown error'))
+      if (userData.user) {
+        setStreak(userData.user.streak)
+        setXp(userData.user.xp)
       }
+
+      setVerified(true)
     } catch (err) {
       setVerifyError('Error: ' + String(err))
+      setVerifyStep('idle')
     } finally {
       setVerifying(false)
     }
@@ -99,7 +136,6 @@ export default function OrbRise() {
       const { MiniKit, Tokens, tokenToDecimals } = await import('@worldcoin/minikit-js')
       MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
       await new Promise(r => setTimeout(r, 300))
-
       await MiniKit.pay({
         reference: `sub_${Date.now()}`,
         to: '0x6b835184085539ee8705b326dca844fb56e8423f',
@@ -116,7 +152,14 @@ export default function OrbRise() {
 
   const streakDays = Array.from({ length: 35 }, (_, i) => i + 1)
 
-  // GATE SCREEN — single step: World ID + Wallet together
+  const stepLabel = () => {
+    if (verifyStep === 'world-id') return '🌐 Verifying humanity...'
+    if (verifyStep === 'wallet') return '💎 Connecting wallet...'
+    if (verifyStep === 'done') return '✓ Almost done...'
+    return '🌐 Sign in to OrbRise'
+  }
+
+  // ── GATE SCREEN ───────────────────────────────────────────
   if (!verified) {
     return (
       <div style={{
@@ -125,22 +168,41 @@ export default function OrbRise() {
         alignItems: 'center', justifyContent: 'center', padding: 24
       }}>
         <div style={{ width: '100%', maxWidth: 380, textAlign: 'center' }}>
+
           <div style={{
-            width: 80, height: 80, borderRadius: '50%',
+            width: 88, height: 88, borderRadius: '50%',
             background: 'linear-gradient(135deg,rgba(124,92,252,0.3),rgba(0,212,255,0.2))',
             border: '1.5px solid rgba(124,92,252,0.4)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 36, margin: '0 auto 24px'
+            fontSize: 40, margin: '0 auto 24px'
           }}>🌍</div>
 
           <div style={{
-            fontSize: 32, fontWeight: 800, marginBottom: 8,
+            fontSize: 34, fontWeight: 800, marginBottom: 8,
             background: 'linear-gradient(135deg,#9d82ff,#00d4ff)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
           }}>OrbRise</div>
 
           <div style={{ fontSize: 14, color: '#9291a5', lineHeight: 1.7, marginBottom: 32, padding: '0 8px' }}>
-            Verify your identity and connect wallet to get started
+            The daily challenge app for real humans. Verify once and start your streak!
+          </div>
+
+          {/* Steps */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 32 }}>
+            {[
+              { icon: '🌍', label: 'Verify Human', done: ['wallet','done'].includes(verifyStep) },
+              { icon: '💎', label: 'Connect Wallet', done: verifyStep === 'done' },
+            ].map((s, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: s.done ? 'rgba(6,214,160,0.15)' : 'rgba(124,92,252,0.12)',
+                  border: `1.5px solid ${s.done ? 'rgba(6,214,160,0.4)' : 'rgba(124,92,252,0.3)'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20
+                }}>{s.done ? '✓' : s.icon}</div>
+                <div style={{ fontSize: 10, color: s.done ? '#06d6a0' : '#9291a5', fontWeight: 600 }}>{s.label}</div>
+              </div>
+            ))}
           </div>
 
           {verifyError && (
@@ -153,30 +215,28 @@ export default function OrbRise() {
             </div>
           )}
 
-          <button
-            onClick={handleVerify}
-            disabled={verifying}
-            style={{
-              width: '100%', padding: 18,
-              background: verifying ? '#1a1a24' : '#fff',
-              border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none',
-              borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
-              fontWeight: 700, color: verifying ? '#9291a5' : '#000',
-              cursor: verifying ? 'default' : 'pointer', marginBottom: 16
-            }}
-          >
-            {verifying ? '🌐 Signing in...' : '🌐 Sign in with World App'}
+          <button onClick={handleSignIn} disabled={verifying} style={{
+            width: '100%', padding: 18,
+            background: verifying
+              ? '#1a1a24'
+              : 'linear-gradient(135deg,#7c5cfc,#00d4ff)',
+            border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none',
+            borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
+            fontWeight: 700, color: verifying ? '#9291a5' : '#fff',
+            cursor: verifying ? 'default' : 'pointer', marginBottom: 16
+          }}>
+            {verifying ? stepLabel() : '🚀 Sign in to OrbRise'}
           </button>
 
           <div style={{ fontSize: 11, color: '#6b6a7d' }}>
-            Powered by World ID · Verifies identity + wallet in one step
+            Powered by World ID · Secure · One-time setup
           </div>
         </div>
       </div>
     )
   }
 
-  // MAIN APP
+  // ── MAIN APP ──────────────────────────────────────────────
   return (
     <div style={{ background: '#0a0a0f', minHeight: '100vh', color: '#f0eeff', fontFamily: 'system-ui, sans-serif', display: 'flex', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 420, position: 'relative', paddingBottom: 80 }}>
@@ -382,7 +442,7 @@ export default function OrbRise() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 700 }}>{walletAddress ? 'Wallet Connected' : 'Wallet Not Connected'}</div>
                 <div style={{ fontSize: 12, color: '#9291a5' }}>
-                  {walletAddress ? `${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}` : 'Connect for subscriptions & rewards'}
+                  {walletAddress ? `${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}` : 'Not connected'}
                 </div>
               </div>
               <div style={{ color: walletAddress ? '#06d6a0' : '#ffd166', fontSize: 18 }}>{walletAddress ? '✓' : '!'}</div>
