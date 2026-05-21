@@ -134,11 +134,13 @@ const userRes = await fetch('/api/user', {
 
   const handleSubscribe = async () => {
   try {
-    const { MiniKit, Tokens, tokenToDecimals } = await import('@worldcoin/minikit-js')
+    const { MiniKit } = await import('@worldcoin/minikit-js')
+    const { Tokens, tokenToDecimals } = await import('@worldcoin/minikit-js/commands')
+
     MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
     await new Promise(r => setTimeout(r, 300))
 
-    // Get nonce from backend
+    // Get nonce
     const { id } = await fetch('/api/generate-nonce', { method: 'POST' }).then(r => r.json())
 
     const result = await MiniKit.pay({
@@ -149,21 +151,27 @@ const userRes = await fetch('/api/user', {
         token_amount: tokenToDecimals(1, Tokens.WLD).toString(),
       }],
       description: 'OrbRise Pro — 1 WLD/month',
+      fallback: () => {
+        alert('Please complete payment in World App.')
+      },
     })
 
-    if (result?.finalPayload?.status === 'success') {
+    console.log('Pay result:', JSON.stringify(result))
+
+    if (result?.executedWith === 'minikit' && result?.data?.transactionId) {
       // Verify on backend
       const verify = await fetch('/api/confirm-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payload: result.finalPayload }),
+        body: JSON.stringify({ payload: result.data }),
       }).then(r => r.json())
 
-      console.log('Payment verified:', verify)
-      alert('✅ Pro subscription activated!')
+      console.log('Verified:', verify)
+      alert('✅ Pro activated! Thank you!')
     }
   } catch (e) {
     console.error('Payment error:', e)
+    alert('Payment error: ' + String(e))
   }
 }
 

@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
     const { payload } = await req.json();
 
     const response = await fetch(
-      `https://developer.worldcoin.org/api/v2/minikit/transaction/${payload.transaction_id}?app_id=${process.env.NEXT_PUBLIC_APP_ID}`,
+      `https://developer.worldcoin.org/api/v2/minikit/transaction/${payload.transactionId}?app_id=${process.env.NEXT_PUBLIC_APP_ID}&type=payment`
       {
         method: "GET",
         headers: {
