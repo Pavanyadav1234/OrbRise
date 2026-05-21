@@ -80,15 +80,15 @@ export default function OrbRise() {
       })
       const data = await res.json()
 
-      if (!data.success) {
-        setVerifyError('Verification failed: ' + JSON.stringify(data.detail || data))
-        setVerifying(false)
-        setVerifyStep('idle')
-        return
+      if (data.success) {
+      setVerifyError('PAYLOAD: ' + JSON.stringify(finalPayload?.result?.responses?.[0]))
+      setVerifying(false)
+      return
       }
 
-      const nullifier = finalPayload?.result?.responses?.[0]?.nullifier_hash || 'unknown'
-
+      const response = finalPayload?.result?.responses?.[0]
+      const nullifier = response?.nullifier_hash || response?.proof || finalPayload?.result?.nonce || 'unknown'
+      console.log('Full payload:', JSON.stringify(finalPayload?.result))
       // ── Step 2: Wallet Auth ───────────────────────────────
       setVerifyStep('wallet')
       const { MiniKit } = await import('@worldcoin/minikit-js')
