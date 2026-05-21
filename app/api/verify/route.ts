@@ -1,43 +1,71 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    // body = { success: true, result: { protocol_version, nonce, responses: [...] } }
-    
-    const rpId = process.env.NEXT_PUBLIC_RP_ID!;
-    const result = body.result;
+    const { world_id, wallet_address } = await req.json();
 
-    const verifyBody = {
-      action: 'orbrise-verify',
-      protocol_version: result.protocol_version,
-      nonce: result.nonce,
-      responses: result.responses,
-    };
-
-    const response = await fetch(
-      `https://developer.world.org/api/v4/verify/${rpId}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(verifyBody),
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { success: false, detail: data },
-        { status: 400 }
-      );
+    // Skip junk entries
+    if (!world_id || world_id === 'update' || world_id === 'unknown') {
+      return NextResponse.json({ error: 'Invalid world_id' }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true });
+    const today = new Date().toISOString().split("T")[0];
+
+    const { data: existing } = await supabase
+      .from("users")
+      .select("*")
+      .eq("world_id", world_id)
+      .single();
+
+    if (existing) {
+      const lastActive = existing.last_active;
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      let newStreak = existing.streak;
+      if (lastActive === today) {
+        // Already logged in today
+      } else if (lastActive === yesterdayStr) {
+        newStreak = existing.streak + 1;
+      } else {
+        newStreak = 1;
+      }
+
+      const { data: updated } = await supabase
+        .from("users")
+        .update({
+          streak: newStreak,
+          last_active: today,
+          wallet_address: wallet_address || existing.wallet_address,
+        })
+        .eq("world_id", world_id)
+        .select()
+        .single();
+
+      return NextResponse.json({ user: updated });
+    } else {
+      const { data: newUser } = await supabase
+        .from("users")
+        .insert({
+          world_id,
+          wallet_address,
+          streak: 1,
+          xp: 0,
+          last_active: today,
+        })
+        .select()
+        .single();
+
+      return NextResponse.json({ user: newUser });
+    }
   } catch (err) {
-    return NextResponse.json(
-      { success: false, error: String(err) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
