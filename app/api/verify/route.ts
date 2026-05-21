@@ -10,12 +10,18 @@ export async function POST(req: NextRequest) {
   try {
     const { world_id, wallet_address } = await req.json();
 
-    // Skip junk entries
-    if (!world_id || world_id === 'update' || world_id === 'unknown') {
-      return NextResponse.json({ error: 'Invalid world_id' }, { status: 400 })
-    }
-
     const today = new Date().toISOString().split("T")[0];
+
+    // If wallet update only — find by wallet and update
+    if (world_id === 'update' && wallet_address) {
+      const { data } = await supabase
+        .from("users")
+        .update({ wallet_address })
+        .eq("wallet_address", wallet_address)
+        .select()
+        .single();
+      return NextResponse.json({ user: data });
+    }
 
     const { data: existing } = await supabase
       .from("users")
@@ -31,7 +37,7 @@ export async function POST(req: NextRequest) {
 
       let newStreak = existing.streak;
       if (lastActive === today) {
-        // Already logged in today
+        return NextResponse.json({ user: existing });
       } else if (lastActive === yesterdayStr) {
         newStreak = existing.streak + 1;
       } else {

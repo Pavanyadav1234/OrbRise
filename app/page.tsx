@@ -109,12 +109,13 @@ export default function OrbRise() {
       if (wallet) setWalletAddress(wallet)
 
       // ── Step 3: Save to Supabase ─────────────────────────
-      setVerifyStep('done')
-      const userRes = await fetch('/api/user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ world_id: nullifier, wallet_address: wallet }),
-      })
+      // ── Step 3: Save to Supabase ─────────────────────────
+setVerifyStep('done')
+const userRes = await fetch('/api/user', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ world_id: nullifier, wallet_address: wallet }),
+})
       const userData = await userRes.json()
 
       if (userData.user) {
