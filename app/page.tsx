@@ -35,103 +35,55 @@ export default function OrbRise() {
   }
 
   const handleSignIn = async () => {
-    setVerifyError('')
-    setVerifying(true)
+  setVerifyError('')
+  setVerifying(true)
+  setVerifyStep('wallet')
 
-    try {
-      // ── Step 1: World ID ──────────────────────────────────
-      setVerifyStep('world-id')
-      const { IDKit, orbLegacy } = await import('@worldcoin/idkit-core')
+  try {
+    const { MiniKit } = await import('@worldcoin/minikit-js')
+    MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
+    await new Promise(r => setTimeout(r, 500))
 
-      const rpRes = await fetch('/api/rp-signature', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'orbrise-verify' }),
-      })
-      const rpSig = await rpRes.json()
+    const result = await MiniKit.walletAuth({
+      nonce: Math.random().toString(36).slice(2, 10),
+      statement: 'Sign in to OrbRise',
+      expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    })
 
-      if (rpSig.error) {
-        setVerifyError('RP error: ' + rpSig.error)
-        setVerifying(false)
-        setVerifyStep('idle')
-        return
-      }
+    const wallet = result?.data?.address || result?.finalPayload?.address || MiniKit.walletAddress || null
 
-      const request = await IDKit.request({
-        app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
-        action: 'orbrise-verify',
-        rp_context: {
-          rp_id: process.env.NEXT_PUBLIC_RP_ID as `rp_${string}`,
-          nonce: rpSig.nonce,
-          created_at: rpSig.created_at,
-          expires_at: rpSig.expires_at,
-          signature: rpSig.sig,
-        },
-        allow_legacy_proofs: true,
-        environment: 'production',
-      }).preset(orbLegacy())
-
-      const finalPayload = await request.pollUntilCompletion()
-
-      const res = await fetch('/api/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalPayload),
-      })
-      const data = await res.json()
-
-      if (data.success) {
-      setVerifyError('PAYLOAD: ' + JSON.stringify(finalPayload?.result?.responses?.[0]))
+    if (!wallet) {
+      setVerifyError('Could not get wallet. Try again.')
       setVerifying(false)
-      return
-      }
-
-      const response = finalPayload?.result?.responses?.[0]
-      const nullifier = response?.nullifier_hash || response?.proof || finalPayload?.result?.nonce || 'unknown'
-      console.log('Full payload:', JSON.stringify(finalPayload?.result))
-      // ── Step 2: Wallet Auth ───────────────────────────────
-      setVerifyStep('wallet')
-      const { MiniKit } = await import('@worldcoin/minikit-js')
-      MiniKit.install(process.env.NEXT_PUBLIC_APP_ID!)
-      await new Promise(r => setTimeout(r, 500))
-
-      let wallet: string | null = null
-
-      const result = await MiniKit.walletAuth({
-        nonce: Math.random().toString(36).slice(2, 10),
-        statement: 'Sign in to OrbRise',
-        expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        notBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      })
-
-      wallet = result?.data?.address || result?.finalPayload?.address || MiniKit.walletAddress || null
-
-      if (wallet) setWalletAddress(wallet)
-
-      // ── Step 3: Save to Supabase ─────────────────────────
-      // ── Step 3: Save to Supabase ─────────────────────────
-setVerifyStep('done')
-const userRes = await fetch('/api/user', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ world_id: nullifier, wallet_address: wallet }),
-})
-      const userData = await userRes.json()
-
-      if (userData.user) {
-        setStreak(userData.user.streak)
-        setXp(userData.user.xp)
-      }
-
-      setVerified(true)
-    } catch (err) {
-      setVerifyError('Error: ' + String(err))
       setVerifyStep('idle')
-    } finally {
-      setVerifying(false)
+      return
     }
-  }
 
+    setWalletAddress(wallet)
+
+    // Save user to Supabase using wallet as ID
+    const userRes = await fetch('/api/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ world_id: wallet, wallet_address: wallet }),
+    })
+    const userData = await userRes.json()
+
+    if (userData.user) {
+      setStreak(userData.user.streak)
+      setXp(userData.user.xp)
+    }
+
+    setVerifyStep('done')
+    setVerified(true)
+  } catch (err) {
+    setVerifyError('Error: ' + String(err))
+    setVerifyStep('idle')
+  } finally {
+    setVerifying(false)
+  }
+}
   const handleSubscribe = async () => {
   try {
     const { MiniKit } = await import('@worldcoin/minikit-js')
@@ -241,17 +193,15 @@ const userRes = await fetch('/api/user', {
           )}
 
           <button onClick={handleSignIn} disabled={verifying} style={{
-            width: '100%', padding: 18,
-            background: verifying
-              ? '#1a1a24'
-              : 'linear-gradient(135deg,#7c5cfc,#00d4ff)',
-            border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none',
-            borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
-            fontWeight: 700, color: verifying ? '#9291a5' : '#fff',
-            cursor: verifying ? 'default' : 'pointer', marginBottom: 16
-          }}>
-            {verifying ? stepLabel() : '🚀 Sign in to OrbRise'}
-          </button>
+  width: '100%', padding: 18,
+  background: verifying ? '#1a1a24' : 'linear-gradient(135deg,#7c5cfc,#00d4ff)',
+  border: verifying ? '0.5px solid rgba(255,255,255,0.1)' : 'none',
+  borderRadius: 16, fontFamily: 'system-ui', fontSize: 16,
+  fontWeight: 700, color: verifying ? '#9291a5' : '#fff',
+  cursor: verifying ? 'default' : 'pointer', marginBottom: 16
+}}>
+  {verifying ? '💎 Connecting...' : '🚀 Sign in with World Wallet'}
+</button>
 
           <div style={{ fontSize: 11, color: '#6b6a7d' }}>
             Powered by World ID · Secure · One-time setup
